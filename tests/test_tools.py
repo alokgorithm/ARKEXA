@@ -17,6 +17,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -67,6 +68,115 @@ def imported_roots(tree: ast.AST) -> set[str]:
             if node.level == 0 and node.module:
                 roots.add(node.module.split(".")[0])
     return roots
+
+
+IDENTIFYING_KEY = re.compile(r"sha|path|repo|url|owner", re.IGNORECASE)
+GITHUB_URL = re.compile(r"github\.com/\S+", re.IGNORECASE)
+COMMIT_SHA = re.compile(r"\b[0-9a-f]{40}\b", re.IGNORECASE)
+
+
+def walk(node, trail="$"):
+    """Every (location, key, value) in a JSON document, however deeply nested."""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            yield trail, key, value
+            yield from walk(value, f"{trail}.{key}")
+    elif isinstance(node, list):
+        for index, value in enumerate(node):
+            yield from walk(value, f"{trail}[{index}]")
+
+
+def assert_no_identity(case, data, what):
+    """A publishable labels file names no repository, commit, path or URL."""
+    for trail, key, value in walk(data):
+        case.assertIsNone(
+            IDENTIFYING_KEY.search(key),
+            f"{what} has an identifying key {key!r} at {trail}",
+        )
+        if isinstance(value, str):
+            case.assertIsNone(
+                GITHUB_URL.search(value),
+                f"{what} has a github.com URL at {trail}.{key}: {value!r}",
+            )
+            case.assertIsNone(
+                COMMIT_SHA.search(value),
+                f"{what} has a commit sha at {trail}.{key}: {value!r}",
+            )
+
+
+class PublishableLabelsTest(unittest.TestCase):
+    """`labels.json` ships. Anything that identifies a source must not be in it.
+
+    Separating identity from judgment is what lets the corpus be published at
+    all: a commit sha is as good as naming the repository, because it is
+    globally searchable. The id-to-source mapping lives in the gitignored
+    sources-private.json, and this test is what stops it drifting back.
+    """
+
+    def test_every_committed_labels_file_carries_no_identity(self):
+        files = sorted((ROOT / "benchmark").glob("*/labels.json"))
+        self.assertTrue(files, "no corpus label files found under benchmark/")
+        for path in files:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            assert_no_identity(self, data, f"benchmark/{path.parent.name}/labels.json")
+
+    def test_the_check_catches_a_key(self):
+        with self.assertRaises(AssertionError):
+            assert_no_identity(self, {"workflows": [{"sha": "x"}]}, "seeded")
+
+    def test_the_check_catches_a_sha_in_a_rationale(self):
+        rationale = {"workflows": [{"rationale": "taken at " + "a" * 40}]}
+        with self.assertRaises(AssertionError):
+            assert_no_identity(self, rationale, "seeded")
+
+    def test_the_check_catches_a_url_in_a_rationale(self):
+        url = {"workflows": [{"rationale": "see github.com/acme/widgets/blob/main/x.yml"}]}
+        with self.assertRaises(AssertionError):
+            assert_no_identity(self, url, "seeded")
+
+
+class RationaleGuardTest(unittest.TestCase):
+    """A rationale is prose, so it leaks in ways a schema check cannot see."""
+
+    WORKFLOW = "jobs:\n  go:\n    steps:\n      - uses: anthropics/claude-code-action@v1\n"
+
+    def check(self, answer):
+        return label.rationale_check(self.WORKFLOW)(answer)
+
+    def test_a_url_is_refused(self):
+        self.assertIn("a URL", self.check("see https://github.com/acme/widgets"))
+
+    def test_a_commit_sha_is_refused(self):
+        self.assertIn("a commit sha", self.check("taken at " + "9f" * 20))
+
+    def test_a_foreign_repository_slug_is_refused(self):
+        self.assertIn("acme/widgets", self.check("the acme/widgets workflow is wide open"))
+
+    def test_the_refusal_says_what_to_write_instead(self):
+        self.assertIn("structure", self.check("acme/widgets is wide open"))
+
+    def test_an_action_the_workflow_uses_is_structural(self):
+        """You cannot describe the workflow without naming the action it runs."""
+        self.assertIsNone(self.check("anthropics/claude-code-action blocks non-write callers"))
+
+    def test_a_repository_that_only_mentions_itself_is_still_refused(self):
+        """`github.repository == 'o/r'` is common, and is not a licence to name it."""
+        workflow = self.WORKFLOW + "    if: github.repository == 'acme/widgets'\n"
+        self.assertIsNotNone(label.rationale_check(workflow)("acme/widgets gates on itself"))
+
+    def test_ordinary_prose_with_a_slash_is_fine(self):
+        self.assertIsNone(self.check("read/write scopes are held by the job"))
+
+    def test_a_structural_rationale_passes(self):
+        self.assertIsNone(self.check("issue_comment reaches the prompt; job holds contents: write"))
+
+    def test_the_prompt_refuses_and_asks_again(self):
+        scripted = Answers("c", "acme/widgets is wide open", "the job holds no write scope", "q")
+        captured = io.StringIO()
+        with mock.patch.object(label, "ask", scripted), redirect_stdout(captured):
+            verdict = label.judge("wf-001", self.WORKFLOW, "1 of 1")
+        self.assertEqual(verdict["rationale"], "the job holds no write scope")
+        self.assertIn("names the source, not the structure", captured.getvalue())
 
 
 class BlindnessTest(unittest.TestCase):
@@ -415,7 +525,6 @@ class SessionTest(unittest.TestCase):
         first, second = data["workflows"]
         self.assertEqual(first["id"], "wf-001")
         self.assertEqual(first["label"], "vulnerable")
-        self.assertEqual(first["sha"], "1111111")
         self.assertEqual(first["triggers"], ["issue_comment"])
         self.assertEqual(first["labeller"], "TT")
         self.assertEqual(second["label"], "clean")
@@ -444,6 +553,70 @@ class SessionTest(unittest.TestCase):
     def test_start_skips_everything_before_the_given_id(self):
         data, _ = self.session("c", "it only runs on a schedule", extra=("--start", "wf-002"))
         self.assertEqual([e["id"] for e in data["workflows"]], ["wf-002"])
+
+    def test_a_prior_verdict_never_reaches_the_prompt(self):
+        """Re-presentation must be as blind as the first pass.
+
+        A labeller shown their own earlier answer is confirming it, not
+        judging it, and two agreeing passes would look like corroboration
+        while being one opinion counted twice. Every distinctive string from
+        the stored entry has to stay out of both what is printed and what is
+        asked - including reachability and expected_rules, which give the
+        verdict away just as completely as the label does.
+        """
+        seeded = {
+            "schema": 1,
+            "workflows": [{
+                "id": "wf-001",
+                "path": "workflows/wf-001.yml",
+                "sha": "1111111",
+                "triggers": ["issue_comment"],
+                "label": "vulnerable",
+                "reachability": "external",
+                "expected_rules": ["ARK001"],
+                "rationale": "SENTINELRATIONALE the body reaches the prompt",
+                "labeller": "XX",
+                "reviewed": "2026-08-01",
+            }],
+            "superseded": [],
+        }
+        self.out.write_text(json.dumps(seeded), encoding="utf-8")
+
+        scripted = Answers("c", "SENTINELNEW every scope is read", "q")
+        captured = io.StringIO()
+        with mock.patch.object(label, "ask", scripted), redirect_stdout(captured):
+            label.main([
+                "--labeller", "TT", "--corpus", str(self.corpus),
+                "--out", str(self.out), "--redo",
+            ])
+
+        exposed = captured.getvalue() + "\n".join(scripted.prompts)
+        for leak in ("SENTINELRATIONALE", "vulnerable", "external", "ARK001", "XX", "2026-08-01"):
+            self.assertNotIn(
+                leak,
+                exposed,
+                f"the stored entry's {leak!r} reached the labeller during re-presentation",
+            )
+
+    def test_an_entry_carries_judgment_and_not_identity(self):
+        """The label says what the workflow does. Which workflow stays private."""
+        data, _ = self.session("c", "read-only scopes", "q")
+        entry = data["workflows"][0]
+        self.assertEqual(entry["triggers"], ["issue_comment"])
+        self.assertEqual(entry["label"], "clean")
+        for leaked in ("sha", "path", "repo", "url", "owner", "source"):
+            self.assertNotIn(leaked, entry)
+
+    def test_a_written_labels_file_is_publishable(self):
+        data, _ = self.session("c", "read-only scopes", "q")
+        assert_no_identity(self, data, "a freshly written labels.json")
+
+    def test_a_gap_in_the_private_mapping_is_announced(self):
+        """The label carries no sha, so an untraceable corpus must be said out loud."""
+        (self.corpus / "sources-private.json").unlink()
+        data, output = self.session("c", "read-only scopes", "q")
+        self.assertIn("no commit sha recorded", output)
+        self.assertNotIn("sha", data["workflows"][0])
 
     def test_limit_stops_the_session_where_it_was_told_to(self):
         data, output = self.session(

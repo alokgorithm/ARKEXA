@@ -8,25 +8,39 @@ The plan, the labelling rules and the ethics that bind it are in
 
 ## Status
 
-**Not yet collected.** `labels.json` holds the schema and no workflows.
-`results.md` will stay empty until the corpus is labelled and the tools are
+**Not yet collected.** Both `labels.json` files hold a schema and no workflows.
+No results file will hold a number until a corpus is labelled and the tools are
 run. There are no numbers here to cite yet, and none will be invented.
 
-## Layout
+## Two corpora
+
+They answer different questions and are not interchangeable. See
+[METHODOLOGY.md](../METHODOLOGY.md).
 
 ```
 benchmark/
-  workflows/     one .yml per corpus entry, named wf-001.yml upward
-  labels.json    the labels, written before any scanner is run
-  excluded.json  ambiguous cases, with the reason each was dropped
-  results.md     precision and recall, regenerated whenever a rule changes
-  run.py         runs the scanners over the corpus and scores them
+  prevalence/    never enriched; answers "how common is this?"
+    workflows/   one .yml per entry, named wf-001.yml upward
+    labels.json  declares "corpus": "prevalence", "enriched": false
+    excluded.json
+  evaluation/    may be enriched; answers "what does each tool catch?"
+    workflows/
+    labels.json  declares "corpus": "evaluation", "enriched": true
+    excluded.json
+    results.md   precision and recall, regenerated whenever a rule changes
+  run.py         delegates to tools/score.py
 ```
+
+The prevalence corpus keeps everything the collection queries returned. The
+evaluation corpus may be topped up with vulnerable-skewed candidates so recall
+has enough positives to measure, which is why **no prevalence figure may come
+from it**. `tools/score.py` enforces that rather than trusting anyone to
+remember.
 
 ## Adding an entry
 
-1. Copy the workflow into `workflows/wf-0NN.yml` with the comment header
-   stripped of anything identifying the repository.
+1. Copy the workflow into the right corpus's `workflows/wf-0NN.yml`, with the
+   comment header stripped of anything identifying the repository.
 2. Add a record to `labels.json`. Write the `rationale` **before** running any
    scanner - reading a tool output first contaminates the label.
 3. If you cannot describe how an outsider triggers it, it is not `vulnerable`.
@@ -49,9 +63,14 @@ Labels are written after every answer, so stopping halfway costs nothing.
 ## Scoring
 
 ```bash
-python benchmark/run.py                 # score ARKEXA
-python benchmark/run.py --with zizmor    # add another scanner if installed
+python tools/score.py prevalence                 # how common it is
+python tools/score.py evaluation                 # score ARKEXA
+python tools/score.py evaluation --with zizmor   # add another scanner
 ```
+
+Prevalence is computed from the hand labels, never by running a scanner, and is
+always reported as a proportion with a Wilson 95% confidence interval and the
+judgeable n — never as a bare percentage.
 
 A tool is credited with a true positive when it reports at least one finding on
 a workflow labelled `vulnerable`, and charged a false positive for any finding

@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "corpus": "evaluation",
+  "enriched": true,
+  "description": "Hand labels for the ARKEXA evaluation corpus, used to measure precision and recall of ARKEXA, zizmor and poutine at pinned versions. See ../../METHODOLOGY.md.",
+  "claim": "On agent-specific issues, what does each scanner find and miss? This corpus is ENRICHED with vulnerable-skewed candidates so there are enough positives to measure recall against. It therefore says nothing whatever about prevalence - use the prevalence corpus.",
+  "fields": {
+    "id": "corpus id; the file, repository and commit it maps to are private",
+    "triggers": "the events declared in the workflow",
+    "label": "vulnerable | clean",
+    "reachability": "external | contributor | maintainer | unreachable",
+    "expected_rules": "rule ids a correct scanner should report, empty for clean",
+    "rationale": "the exploit path for vulnerable, the reason it is safe for clean",
+    "labeller": "initials",
+    "reviewed": "YYYY-MM-DD"
+  },
+  "workflows": []
+}

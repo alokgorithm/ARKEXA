@@ -1,5 +1,6 @@
 {
   "schema": 1,
   "description": "Workflows considered for the corpus and dropped, with the reason. A smaller honest corpus beats a larger hand-wavy one.",
-  "excluded": []
+  "excluded": [],
+  "corpus": "evaluation"
 }

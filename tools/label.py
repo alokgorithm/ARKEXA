@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -55,11 +56,17 @@ def corpus_dir(explicit: str | None) -> Path:
         if not (path / "workflows").is_dir():
             sys.exit(f"{path / 'workflows'} does not exist")
         return path
-    for name in (".benchmark", "benchmark"):
-        candidate = ROOT / name
-        if candidate.is_dir() and any((candidate / "workflows").glob("*.y*ml")):
-            return candidate
-    sys.exit("No corpus found. Populate .benchmark/workflows/ or benchmark/workflows/.")
+    # Two corpora now, so a bare directory is ambiguous and the prevalence one
+    # is the default: it is the one with workflows waiting to be labelled.
+    for base in (".benchmark", "benchmark"):
+        for name in ("prevalence", "evaluation", ""):
+            candidate = ROOT / base / name if name else ROOT / base
+            if candidate.is_dir() and any((candidate / "workflows").glob("*.y*ml")):
+                return candidate
+    sys.exit(
+        "No corpus found. Populate .benchmark/prevalence/workflows/ "
+        "(or pass --corpus). See METHODOLOGY.md for which corpus is which."
+    )
 
 
 def load_labels(path: Path) -> dict:
@@ -158,6 +165,64 @@ def digest(text: str) -> list[str]:
     return lines
 
 
+_URL = re.compile(r"https?://|\bwww\.|\bgithub\.com\b", re.IGNORECASE)
+_SHA = re.compile(r"\b[0-9a-f]{40}\b", re.IGNORECASE)
+_SLUG = re.compile(r"\b[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}\b")
+_USES = re.compile(r"^\s*-?\s*uses:\s*[\"']?([A-Za-z0-9][\w.-]*/[\w.-]+)", re.MULTILINE)
+
+# A slash turns up in ordinary prose long before it means a repository.
+# "read/write scopes" is a description, not a source.
+_PROSE = {
+    "read", "write", "and", "or", "on", "off", "true", "false", "yes", "no",
+    "input", "output", "issues", "pull", "push", "in", "out", "either",
+}
+
+
+def action_slugs(text: str) -> set[str]:
+    """Owner/repo pairs the workflow itself uses, which are structure, not source.
+
+    `uses: anthropics/claude-code-action@v1` has to be nameable in a rationale.
+    A repository that merely mentions itself - `github.repository == 'o/r'` is
+    common - is not on a `uses:` line and stays rejected, which is the point.
+    """
+    return {match.group(1).split("@")[0].lower() for match in _USES.finditer(text)}
+
+
+def identifying(rationale: str, allowed: set[str]) -> str | None:
+    """What in this rationale names the source rather than the structure."""
+    if _URL.search(rationale):
+        return "a URL"
+    if _SHA.search(rationale):
+        return "a commit sha"
+    for match in _SLUG.finditer(rationale):
+        slug = match.group(0)
+        owner, _, repo = slug.partition("/")
+        if owner.lower() in _PROSE and repo.lower() in _PROSE:
+            continue
+        if slug.lower() in allowed:
+            continue
+        return f"'{slug}'"
+    return None
+
+
+def rationale_check(text: str):
+    """A validator for one workflow's rationales, closed over what it may name."""
+    allowed = action_slugs(text)
+
+    def check(answer: str) -> str | None:
+        found = identifying(answer, allowed)
+        if found is None:
+            return None
+        return (
+            f"  That names the source, not the structure: {found}.\n"
+            "  Say what the workflow does - the trigger, the scopes, the path\n"
+            "  from the event to the prompt. The id-to-source mapping lives in\n"
+            "  sources-private.json and does not belong in a label."
+        )
+
+    return check
+
+
 def ask(prompt: str) -> str:
     try:
         return input(prompt).strip()
@@ -166,18 +231,33 @@ def ask(prompt: str) -> str:
         raise SystemExit("stdin closed; nothing further was written")
 
 
-def ask_required(prompt: str) -> str | None:
-    """Keep asking until there is an answer, or the labeller backs out."""
+def ask_required(prompt: str, check=None) -> str | None:
+    """Keep asking until there is an acceptable answer, or the labeller backs out."""
+    blanks = 0
     while True:
         answer = ask(prompt)
-        if answer:
+        if not answer:
+            blanks += 1
+            if blanks >= 2:
+                return None
+            print(f"  Required. Leave it blank again to go back to the verdict.\n  {RULE}")
+            continue
+        blanks = 0
+        problem = check(answer) if check else None
+        if problem is None:
             return answer
-        print(f"  Required. Leave it blank again to go back to the verdict.\n  {RULE}")
-        if not ask(prompt):
-            return None
+        print(problem)
 
 
 def judge(entry_id: str, text: str, position: str) -> dict | None:
+    """Present one workflow and return the verdict.
+
+    Deliberately takes the file text and nothing else. It is not given the
+    labels file, the previous entry, or anything derived from them, so an
+    earlier verdict cannot reach the prompt however this is called. Callers
+    must keep it that way: the lookup of any prior entry happens after this
+    returns. `tests/test_tools.py` fails if a prior verdict ever leaks in.
+    """
     print("\n" + "=" * 78)
     print(f"  {entry_id}   {position}")
     print("=" * 78)
@@ -187,6 +267,8 @@ def judge(entry_id: str, text: str, position: str) -> dict | None:
         print(line)
     print("-" * 78)
 
+    check = rationale_check(text)
+
     while True:
         verdict = ask("verdict  [v]ulnerable  [c]lean  e[x]clude  [s]kip  [q]uit: ").lower()
         if verdict in ("q", "quit"):
@@ -194,12 +276,12 @@ def judge(entry_id: str, text: str, position: str) -> dict | None:
         if verdict in ("s", "skip"):
             return None
         if verdict in ("x", "exclude"):
-            reason = ask_required("  why is it not judgeable? ")
+            reason = ask_required("  why is it not judgeable? ", check)
             if reason is None:
                 continue
             return {"label": "excluded", "rationale": reason}
         if verdict in ("c", "clean"):
-            reason = ask_required("  why is it safe? ")
+            reason = ask_required("  why is it safe? ", check)
             if reason is None:
                 continue
             return {"label": "clean", "reachability": "", "expected_rules": [], "rationale": reason}
@@ -216,7 +298,7 @@ def judge(entry_id: str, text: str, position: str) -> dict | None:
                     break
             if not level:
                 continue
-            path = ask_required("  how does that account reach the model? ")
+            path = ask_required("  how does that account reach the model? ", check)
             if path is None:
                 continue
             rules = ask(f"  rules a correct scanner should report {KNOWN_RULES} (optional): ")
@@ -269,6 +351,14 @@ def main(argv: list[str] | None = None) -> int:
     print(f"labels     {out}")
     print(f"labeller   {args.labeller}")
     print(f"progress   {mine} of {len(files)} labelled by you, {len(todo)} to go")
+    # The labels carry no sha by design, so the private mapping is the only
+    # thing that makes them reproducible. A gap in it is worth knowing about
+    # before the session rather than after.
+    unknown = [f.stem for f in files if not sha_of.get(f.stem)]
+    if unknown:
+        print(f"warning    no commit sha recorded for {len(unknown)} of {len(files)} "
+              f"workflows ({', '.join(unknown[:3])}{'...' if len(unknown) > 3 else ''});"
+              f" fix sources-private.json or those labels cannot be traced back")
     print(f"\n{RULE}\n")
 
     written = 0
@@ -288,9 +378,10 @@ def main(argv: list[str] | None = None) -> int:
         if previous is not None:
             data["superseded"].append(previous)
             data["workflows"].remove(previous)
+        # No sha, no path, no repository. A label says what a workflow does;
+        # which workflow it was lives in sources-private.json and stays there.
         entry = {
             "id": entry_id,
-            "sha": sha_of.get(entry_id, ""),
             "triggers": sorted(str(e) for e in triggers_of(_parse(path)).keys()),
             **answer,
             "labeller": args.labeller,
