@@ -36,7 +36,11 @@ an outsider can reach.
 1. GitHub code search for workflow files referencing known agent actions and
    inference endpoints (the same list as `data/agents.yml`).
 2. Deduplicate by repository; at most one workflow per repository, so no single
-   project can skew the numbers.
+   project can skew the numbers. Deduplicate by **normalised content** as well
+   — comments stripped, action pins folded — and record any cluster found in
+   `normalised_duplicates` rather than dropping it, since for prevalence both
+   deployments count. Exact-byte comparison is not sufficient and was what let
+   an identical pair through.
 3. Stratify by trigger type so `schedule`-only workflows are not
    over-represented — they are the easy case for reachability.
 4. **Keep everything the queries returned.** No workflow is added because it
@@ -119,6 +123,69 @@ without any scanner output. Re-presenting a workflow is as blind as the first
 pass: the tool does not display, or pre-fill from, a verdict already on file.
 Two passes that agree are only evidence if the second was made without sight
 of the first.
+
+### Labelling policy
+
+Decisions taken by the labeller about how a recurring case is judged, so that
+the same situation is judged the same way on workflow 4 and workflow 94. Each
+is recorded with its date. A decision here binds every label written after it;
+if one changes, the labels written under the old one are re-presented, not
+quietly reinterpreted.
+
+**1. `id-token: write` is not a write scope.** *Decided 2026-08-31, AS.*
+
+`id-token: write` mints an OIDC token for authenticating to an external
+service. It grants no write access to the repository — not to contents, not to
+issues, not to pull requests. A job whose scopes are otherwise all `read` plus
+`id-token: write` is therefore **clean**, and the presence of `id-token: write`
+is not on its own a reason to call anything vulnerable.
+
+The exception is concrete, not theoretical: if the workflow shows something
+consuming that token to obtain write access — exchanging it for cloud
+credentials that can push, or for a token with repository write — then the
+write capability is real and visible in the file, and the label follows the
+capability. Absent that, the token goes nowhere the file can show.
+
+**2. Doc-page and template sources.** *Decided 2026-08-31, AS.*
+
+**(a) Deployed copies of documented examples count.** All 98 entries are live
+workflows in `.github/workflows/`; none came from a documentation path or a
+template directory. Two declare a vendor's docs page as their origin in a
+header comment. They stay. Provenance does not change reachability: a
+documented example that someone deployed is a running workflow an outsider can
+reach, and dropping it would measure "workflows whose authors wrote from
+scratch", which is not the claim.
+
+**(b) The unit of observation is the deployment — for prevalence only.** Two
+repositories running the same template are two real exposures, and both count
+toward prevalence. Collapsing them would understate how much of this is
+actually deployed.
+
+For the **evaluation** corpus the unit is the distinct workflow. Normalised
+duplicates are collapsed there, so one file cannot be weighted twice in a
+precision figure — a scanner should not be rewarded or punished twice for the
+same input. `tools/score.py` applies this asymmetry: `collapsed_ids()` is
+consulted by `evaluate()` and deliberately not by `prevalence()`.
+
+Duplicates are compared **after normalisation** — comments stripped and action
+pins folded — because copies of a template are rarely byte-identical once
+comments are edited and pins drift. Exact-match comparison finds almost
+nothing, which is how `wf-056` and `wf-076` sat in the corpus as separate
+entries until they were found by hand. Collection now applies the normalised
+comparison, and known clusters are recorded in the corpus's
+`normalised_duplicates`.
+
+**3. Excluded entries leave the denominator.** *Decided 2026-08-31, AS.*
+
+An `excluded` entry is not evidence of anything and is **never counted as
+`clean`**. It leaves the denominator entirely: prevalence is computed over
+judgeable entries only, and the excluded count is reported alongside so the
+size of the gap is visible.
+
+Every exclusion carries a written reason, in the entry. "Unclear" is not a
+reason; what could not be established is. Excluding is a legitimate answer and
+costs one observation, whereas a guess that lands in the denominator costs the
+credibility of the whole figure.
 
 ### Labels set aside
 

@@ -33,8 +33,10 @@ about the tool.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
+import re
 import shutil
 import subprocess
 import sys
@@ -64,6 +66,7 @@ class Corpus:
     kind: str
     enriched: bool
     entries: list[dict] = field(default_factory=list)
+    declared_duplicates: list[list[str]] = field(default_factory=list)
 
     @property
     def judgeable(self) -> list[dict]:
@@ -103,6 +106,7 @@ def load_corpus(directory: Path) -> Corpus:
         kind=kind,
         enriched=bool(data["enriched"]),
         entries=list(data.get("workflows", [])),
+        declared_duplicates=[list(c) for c in data.get("normalised_duplicates", [])],
     )
 
 
@@ -179,6 +183,62 @@ def prevalence(corpus: Corpus) -> Prevalence:
         excluded=len(corpus.excluded),
         interval=wilson(len(reachable), len(judgeable)),
     )
+
+
+def normalise_workflow(text: str) -> str:
+    """Workflow content with the things that differ between copies removed.
+
+    Two repositories deploying the same template rarely produce byte-identical
+    files: comments get edited and action pins drift. Comparing raw bytes
+    therefore finds almost nothing, which is how wf-056 and wf-076 sat in the
+    corpus as separate entries until they were spotted by hand.
+    """
+    lines = []
+    for line in text.splitlines():
+        line = re.sub(r"#.*$", "", line).rstrip()
+        line = re.sub(r"@[0-9a-f]{40}\b", "@PIN", line)
+        if line.strip():
+            lines.append(line)
+    return "\n".join(lines)
+
+
+def fingerprint(text: str) -> str:
+    return hashlib.sha256(normalise_workflow(text).encode("utf-8")).hexdigest()
+
+
+def duplicate_clusters(corpus: Corpus) -> list[list[str]]:
+    """Ids whose workflows match once comments and pins are ignored.
+
+    Computed from the files when they are present, and unioned with whatever
+    the corpus declares, so a corpus shipped without its workflows still knows
+    which entries are copies of each other.
+    """
+    groups: dict[str, list[str]] = {}
+    for entry in corpus.entries:
+        path = corpus.root / "workflows" / f"{entry['id']}.yml"
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        groups.setdefault(fingerprint(text), []).append(entry["id"])
+
+    found = [sorted(ids) for ids in groups.values() if len(ids) > 1]
+    for declared in corpus.declared_duplicates:
+        if sorted(declared) not in found:
+            found.append(sorted(declared))
+    return sorted(found)
+
+
+def collapsed_ids(corpus: Corpus) -> set[str]:
+    """Entries to skip so one workflow cannot be weighted twice in a tool score.
+
+    Evaluation only. Prevalence counts every deployment, because two
+    repositories running the same reachable template are two real exposures -
+    see the labelling policy in METHODOLOGY.md.
+    """
+    skip: set[str] = set()
+    for cluster in duplicate_clusters(corpus):
+        skip.update(cluster[1:])
+    return skip
 
 
 @dataclass
@@ -274,7 +334,10 @@ def evaluate(corpus: Corpus, tool: str) -> Score:
     """Precision and recall for one tool. Says nothing about prevalence."""
     version = arkexa_version() if tool == "arkexa" else tool_version(tool)
     result = Score(tool=tool, version=version)
+    collapsed = collapsed_ids(corpus)
     for entry in corpus.judgeable:
+        if entry["id"] in collapsed:
+            continue
         path = corpus.root / "workflows" / f"{entry['id']}.yml"
         if not path.is_file():
             continue

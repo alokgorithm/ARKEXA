@@ -223,6 +223,98 @@ class EvaluationTest(unittest.TestCase):
         self.assertEqual(len(self.corpus.judgeable), 20)
 
 
+class NormalisedDuplicateTest(unittest.TestCase):
+    """The same template in two repositories: two exposures, one test input.
+
+    Policy decision 2(b) in METHODOLOGY.md. Prevalence counts the deployment,
+    because two repositories running the same reachable template really are two
+    reachable repositories. Evaluation counts the distinct workflow, because a
+    scanner should be neither rewarded nor punished twice for one input.
+    """
+
+    TEMPLATE = (
+        "on:\n"
+        "  issue_comment:\n"
+        "    types: [created]\n"
+        "jobs:\n"
+        "  go:\n"
+        "    permissions:\n"
+        "      issues: write\n"
+        "    steps:\n"
+        "      - uses: actions/ai-inference@{pin}\n"
+        "{comment}"
+    )
+
+    def build(self, kind, enriched):
+        directory = Path(self.tmp.name) / kind
+        (directory / "workflows").mkdir(parents=True, exist_ok=True)
+        # Same workflow, different comment and a different pin: what a template
+        # copied between two repositories actually looks like.
+        (directory / "workflows" / "wf-001.yml").write_text(
+            self.TEMPLATE.format(pin="a" * 40, comment="# our review bot\n"),
+            encoding="utf-8",
+        )
+        (directory / "workflows" / "wf-002.yml").write_text(
+            self.TEMPLATE.format(pin="b" * 40, comment="# triage helper\n"),
+            encoding="utf-8",
+        )
+        (directory / "labels.json").write_text(json.dumps({
+            "schema": 1, "corpus": kind, "enriched": enriched,
+            "workflows": [
+                entry("wf-001", "vulnerable", "external"),
+                entry("wf-002", "vulnerable", "external"),
+            ],
+        }), encoding="utf-8")
+        return score.load_corpus(directory)
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+
+    def test_the_pair_is_recognised_despite_comments_and_pins(self):
+        corpus = self.build(score.PREVALENCE, False)
+        self.assertEqual(score.duplicate_clusters(corpus), [["wf-001", "wf-002"]])
+
+    def test_prevalence_counts_both_deployments(self):
+        result = score.prevalence(self.build(score.PREVALENCE, False))
+        self.assertEqual(result.judgeable, 2)
+        self.assertEqual(result.reachable, 2)
+
+    def test_evaluation_collapses_them_to_one(self):
+        corpus = self.build(score.EVALUATION, True)
+        self.assertEqual(score.collapsed_ids(corpus), {"wf-002"})
+
+    def test_the_lowest_id_is_the_one_that_survives(self):
+        """Deterministic, so a rerun scores the same file."""
+        self.assertNotIn("wf-001", score.collapsed_ids(self.build(score.EVALUATION, True)))
+
+    def test_distinct_workflows_are_not_collapsed(self):
+        corpus = self.build(score.EVALUATION, True)
+        (corpus.root / "workflows" / "wf-002.yml").write_text(
+            self.TEMPLATE.format(pin="b" * 40, comment="") + "      - run: echo hi\n",
+            encoding="utf-8",
+        )
+        self.assertEqual(score.collapsed_ids(corpus), set())
+
+    def test_a_declared_cluster_is_honoured_without_the_files(self):
+        """A corpus shipped without its workflows still knows what it collapsed."""
+        directory = Path(self.tmp.name) / "declared"
+        (directory / "workflows").mkdir(parents=True)
+        (directory / "labels.json").write_text(json.dumps({
+            "schema": 1, "corpus": score.EVALUATION, "enriched": True,
+            "normalised_duplicates": [["wf-056", "wf-076"]],
+            "workflows": [entry("wf-056", "clean"), entry("wf-076", "clean")],
+        }), encoding="utf-8")
+        self.assertEqual(score.collapsed_ids(score.load_corpus(directory)), {"wf-076"})
+
+    def test_normalisation_ignores_comments_and_pins_only(self):
+        same = score.fingerprint("jobs:\n  a:\n    steps: []\n# note\n")
+        also = score.fingerprint("# different note\njobs:\n  a:\n    steps: []\n")
+        different = score.fingerprint("jobs:\n  b:\n    steps: []\n")
+        self.assertEqual(same, also)
+        self.assertNotEqual(same, different)
+
+
 class ShippedCorporaTest(unittest.TestCase):
     """Whatever is committed must declare what it is allowed to claim."""
 

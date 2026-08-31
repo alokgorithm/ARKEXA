@@ -2,6 +2,7 @@
   "schema": 1,
   "corpus": "evaluation",
   "enriched": true,
+  "normalised_duplicates": [],
   "description": "Hand labels for the ARKEXA evaluation corpus, used to measure precision and recall of ARKEXA, zizmor and poutine at pinned versions. See ../../METHODOLOGY.md.",
   "claim": "On agent-specific issues, what does each scanner find and miss? This corpus is ENRICHED with vulnerable-skewed candidates so there are enough positives to measure recall against. It therefore says nothing whatever about prevalence - use the prevalence corpus.",
   "fields": {
@@ -12,7 +13,8 @@
     "expected_rules": "rule ids a correct scanner should report, empty for clean",
     "rationale": "the exploit path for vulnerable, the reason it is safe for clean",
     "labeller": "initials",
-    "reviewed": "YYYY-MM-DD"
+    "reviewed": "YYYY-MM-DD",
+    "normalised_duplicates": "clusters of ids with identical content once comments and pins are ignored; counted individually for prevalence, collapsed for evaluation"
   },
   "workflows": []
 }

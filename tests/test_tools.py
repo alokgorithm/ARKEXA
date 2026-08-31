@@ -135,6 +135,72 @@ class PublishableLabelsTest(unittest.TestCase):
             assert_no_identity(self, url, "seeded")
 
 
+class LabellingPolicyTest(unittest.TestCase):
+    """The recorded policy decisions must stay in METHODOLOGY.md.
+
+    A labelling policy that is not written down is not a policy, it is a mood:
+    the same situation gets judged one way on workflow 4 and another on
+    workflow 94, and nothing in the corpus shows it happened. These decisions
+    are load-bearing for labels already written under them, so losing one
+    silently is worse than never having recorded it.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.text = (ROOT / "METHODOLOGY.md").read_text(encoding="utf-8")
+        start = cls.text.find("### Labelling policy")
+        assert start != -1, "METHODOLOGY.md has no '### Labelling policy' section"
+        end = cls.text.find("### Labels set aside", start)
+        cls.policy = cls.text[start : end if end != -1 else len(cls.text)]
+
+    def test_the_section_exists(self):
+        self.assertIn("### Labelling policy", self.text)
+
+    def test_the_id_token_decision_is_recorded(self):
+        self.assertIn("`id-token: write` is not a write scope", self.policy)
+        self.assertIn("OIDC", self.policy)
+        self.assertRegex(self.policy, r"id-token: write.*?\*Decided \d{4}-\d{2}-\d{2}")
+
+    def test_the_id_token_decision_keeps_its_exception(self):
+        """Without the exception it reads as "always clean", which is wrong."""
+        self.assertIn("exchanging it for cloud", self.policy)
+
+    def test_the_doc_page_decision_is_recorded(self):
+        self.assertIn("Doc-page and template sources", self.policy)
+        self.assertRegex(
+            self.policy, r"Doc-page and template sources.*?\*Decided \d{4}-\d{2}-\d{2}"
+        )
+        self.assertNotIn("Open — not yet decided", self.policy)
+
+    def test_the_doc_page_decision_covers_both_halves(self):
+        """(a) and (b) answer different questions; one without the other is not it."""
+        self.assertIn("Deployed copies of documented examples count", self.policy)
+        self.assertIn("unit of observation is the deployment", self.policy)
+
+    def test_the_prevalence_evaluation_asymmetry_is_stated(self):
+        """The whole point of (b): the same pair is counted twice, then once."""
+        self.assertIn("for prevalence only", self.policy)
+        self.assertIn("collapsed", self.policy)
+
+    def test_the_exclusion_decision_is_recorded(self):
+        self.assertIn("Excluded entries leave the denominator", self.policy)
+        self.assertIn("never counted as", self.policy)
+        self.assertRegex(self.policy, r"Excluded entries.*?\*Decided \d{4}-\d{2}-\d{2}")
+
+    def test_every_exclusion_needs_a_written_reason(self):
+        self.assertIn("Every exclusion carries a written reason", self.policy)
+
+    def test_each_decision_is_attributed_and_dated(self):
+        decided = re.findall(r"\*Decided (\d{4}-\d{2}-\d{2}), (\w+)\.\*", self.policy)
+        self.assertGreaterEqual(len(decided), 2, "decisions must carry a date and a labeller")
+        for _, who in decided:
+            self.assertTrue(who.isalpha())
+
+    def test_all_three_decisions_are_numbered_and_present(self):
+        for number in ("**1.", "**2.", "**3."):
+            self.assertIn(number, self.policy, f"policy decision {number} is missing")
+
+
 class RationaleGuardTest(unittest.TestCase):
     """A rationale is prose, so it leaks in ways a schema check cannot see."""
 
