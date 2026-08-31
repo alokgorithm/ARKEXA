@@ -1,0 +1,19 @@
+name: Triage
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+    env:
+      BODY: ${{ github.event.issue.body }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ask the model to triage
+        id: ai
+        run: |
+          claude -p "Triage this issue. $BODY"
