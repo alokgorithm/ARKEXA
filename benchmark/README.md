@@ -52,7 +52,12 @@ remember.
 ```bash
 python tools/label.py --labeller AS           # the whole corpus
 python tools/label.py --labeller AS --limit 20 # stop after twenty
+python tools/label.py --labeller AS --only prevalence/sample-50.json
 ```
+
+`--only` restricts the run to the ids in a draw file. Skipping past the rest
+by hand is a stray keystroke away from recording a verdict on a workflow that
+is not in the sample, and a verdict cannot be unseen.
 
 It shows the workflow, its triggers and its permissions, and refuses to record
 a verdict without a written reason. It cannot show you a scanner's opinion

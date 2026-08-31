@@ -16,6 +16,7 @@ Usage:
     python tools/label.py --labeller AS
     python tools/label.py --labeller AS --limit 20
     python tools/label.py --labeller AS --start wf-031
+    python tools/label.py --labeller AS --only benchmark/prevalence/sample-50.json
 
 The corpus defaults to `.benchmark/` when it holds workflows, because that is
 where third-party files sit until the disclosure window closes, and falls back
@@ -311,6 +312,36 @@ def judge(entry_id: str, text: str, position: str) -> dict | None:
         print("  Answer v, c, x, s or q.")
 
 
+def drawn_ids(path: Path) -> set[str]:
+    """Ids from a draw file, so a sample is labelled without skipping by hand.
+
+    Pressing `s` fifty times through workflows that are not in the sample is a
+    stray keystroke away from a verdict on one of them, and a verdict cannot be
+    unseen. Accepts the draw file's own shape (a mapping with `drawn`) or a
+    bare list of ids.
+    """
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        sys.exit(f"cannot read {path}: {error}")
+
+    if isinstance(data, dict):
+        for key in ("drawn", "ids", "workflows"):
+            if isinstance(data.get(key), list):
+                data = data[key]
+                break
+    if not isinstance(data, list):
+        sys.exit(f"{path} holds no list of ids (expected a 'drawn' list)")
+
+    ids = {
+        str(item["id"]) if isinstance(item, dict) and "id" in item else str(item)
+        for item in data
+    }
+    if not ids:
+        sys.exit(f"{path} lists no ids")
+    return ids
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Label benchmark workflows by hand.")
     parser.add_argument("--labeller", required=True, help="your initials, recorded per label")
@@ -318,6 +349,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", help="labels file (default: <corpus>/labels.json)")
     parser.add_argument("--limit", type=int, help="stop after this many new labels")
     parser.add_argument("--start", help="begin at this id")
+    parser.add_argument(
+        "--only",
+        help="label only the ids listed in this file, e.g. a published draw",
+    )
     parser.add_argument("--redo", action="store_true", help="re-present your own earlier labels")
     args = parser.parse_args(argv)
 
@@ -336,10 +371,30 @@ def main(argv: list[str] | None = None) -> int:
     sha_of = shas(corpus)
 
     files = sorted((corpus / "workflows").glob("*.y*ml"))
+    restricted_to = ""
+    if args.only:
+        given = Path(args.only)
+        wanted = drawn_ids(given if given.is_absolute() else ROOT / given)
+        present = {f.stem for f in files}
+        missing = sorted(wanted - present)
+        files = [f for f in files if f.stem in wanted]
+        restricted_to = f"{given} ({len(wanted)} ids)"
+        if missing:
+            print(f"warning    {len(missing)} id(s) in the draw are not in this "
+                  f"corpus: {', '.join(missing[:5])}"
+                  f"{'...' if len(missing) > 5 else ''}")
+        if not files:
+            sys.exit(f"none of the ids in {given} are in {corpus / 'workflows'}")
     if args.start:
         files = [f for f in files if f.stem >= args.start]
 
-    mine = sum(1 for e in by_id.values() if e.get("labeller") == args.labeller)
+    # Counted over the files this run covers, so a restricted run does not
+    # report progress against entries outside the draw.
+    in_scope = {f.stem for f in files}
+    mine = sum(
+        1 for e in by_id.values()
+        if e.get("labeller") == args.labeller and e.get("id") in in_scope
+    )
     todo = [
         f for f in files
         if f.stem not in by_id
@@ -350,6 +405,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"corpus     {corpus}")
     print(f"labels     {out}")
     print(f"labeller   {args.labeller}")
+    if restricted_to:
+        print(f"restricted {restricted_to}")
     print(f"progress   {mine} of {len(files)} labelled by you, {len(todo)} to go")
     # The labels carry no sha by design, so the private mapping is the only
     # thing that makes them reproducible. A gap in it is worth knowing about

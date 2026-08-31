@@ -684,6 +684,63 @@ class SessionTest(unittest.TestCase):
         self.assertIn("no commit sha recorded", output)
         self.assertNotIn("sha", data["workflows"][0])
 
+    def draw(self, *ids, key="drawn"):
+        path = self.corpus / "draw.json"
+        path.write_text(json.dumps({"seed": 1, key: list(ids)}), encoding="utf-8")
+        return str(path)
+
+    def test_only_labels_the_ids_in_the_draw(self):
+        """Skipping past fifty files by hand is one keystroke from a wrong verdict."""
+        data, _ = self.session(
+            "c", "it only runs on a schedule",
+            extra=("--only", self.draw("wf-002")),
+        )
+        self.assertEqual([e["id"] for e in data["workflows"]], ["wf-002"])
+
+    def test_the_run_says_it_is_restricted(self):
+        _, output = self.session("q", extra=("--only", self.draw("wf-002")))
+        self.assertIn("restricted", output)
+        self.assertIn("1 of 1", output)
+
+    def test_an_id_outside_the_corpus_is_reported_not_ignored(self):
+        _, output = self.session("q", extra=("--only", self.draw("wf-002", "wf-999")))
+        self.assertIn("not in this corpus", output)
+        self.assertIn("wf-999", output)
+
+    def test_a_bare_list_of_ids_works_too(self):
+        path = self.corpus / "plain.json"
+        path.write_text(json.dumps(["wf-002"]), encoding="utf-8")
+        data, _ = self.session(
+            "c", "it only runs on a schedule", extra=("--only", str(path))
+        )
+        self.assertEqual([e["id"] for e in data["workflows"]], ["wf-002"])
+
+    def test_a_draw_matching_nothing_stops_rather_than_labelling_everything(self):
+        with self.assertRaises(SystemExit):
+            self.session("q", extra=("--only", self.draw("wf-999")))
+
+    def test_an_unreadable_draw_stops(self):
+        path = self.corpus / "broken.json"
+        path.write_text("{not json", encoding="utf-8")
+        with self.assertRaises(SystemExit):
+            self.session("q", extra=("--only", str(path)))
+
+    def test_progress_counts_only_what_the_draw_covers(self):
+        """A label outside the draw is not progress through the draw."""
+        self.session("c", "read-only scopes", "q")          # labels wf-001
+        _, output = self.session("q", extra=("--only", self.draw("wf-002")))
+        self.assertIn("0 of 1 labelled by you", output)
+
+    def test_the_shipped_draw_is_reproducible_from_its_seed(self):
+        """The published seed is the whole basis for "not cherry-picked"."""
+        import random
+
+        path = ROOT / "benchmark" / "prevalence" / "sample-50.json"
+        drawn = json.loads(path.read_text(encoding="utf-8"))
+        population = sorted(f"wf-{i:03d}" for i in range(1, drawn["population"] + 1))
+        expected = sorted(random.Random(drawn["seed"]).sample(population, drawn["size"]))
+        self.assertEqual(drawn["drawn"], expected)
+
     def test_limit_stops_the_session_where_it_was_told_to(self):
         data, output = self.session(
             "v", "e", "the comment body reaches the prompt", "", extra=("--limit", "1")
