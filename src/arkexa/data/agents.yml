@@ -36,7 +36,9 @@ actions:
     prompt_inputs: [prompt, prompt_file, append_system_prompt]
   - name: github-ai-inference
     uses: actions/ai-inference
-    prompt_inputs: [prompt, system-prompt, prompt-file]
+    # `input` fills placeholders in a prompt file. It is the quiet way
+    # untrusted text reaches this action, and missing it cost a real detection.
+    prompt_inputs: [prompt, system-prompt, prompt-file, system-prompt-file, input]
   - name: gemini-cli-action
     uses: google-github-actions/run-gemini-cli
     prompt_inputs: [prompt, settings]

@@ -48,6 +48,20 @@ WRITE_OUTPUT = re.compile(
     r"^\s*(?:echo|printf)\s+[\"']?([A-Za-z_][A-Za-z0-9_-]*)=(.*?)[\"']?\s*>>\s*[\"']?\$\{?GITHUB_OUTPUT\}?",
     re.MULTILINE,
 )
+# The documented way to write a multi-line output or variable:
+#
+#     echo "body<<EOF"  ...  echo "EOF"   } >> "$GITHUB_OUTPUT"
+#
+# The delimiter is often itself a shell variable, so the body cannot be
+# isolated reliably. When a run block writes a name this way, the taint of the
+# whole block is attributed to that name. That over-approximates, but the
+# alternative is losing the value entirely, and blocks shaped like this exist
+# precisely to assemble outputs out of their inputs.
+WRITE_HEREDOC_NAME = re.compile(
+    r"^\s*(?:echo|printf)\s+[\"']?([A-Za-z_][A-Za-z0-9_-]*)<<", re.MULTILINE
+)
+REDIRECTS_TO_OUTPUT = re.compile(r">>\s*[\"']?\$\{?GITHUB_OUTPUT\}?")
+REDIRECTS_TO_ENV = re.compile(r">>\s*[\"']?\$\{?GITHUB_ENV\}?")
 
 
 @dataclass(frozen=True)
@@ -216,6 +230,22 @@ class JobTaint:
                 if taints:
                     key = f"steps.{step.id}.outputs.{name}"
                     self.outputs[(step.id, name)] = [t.hop_to(key, line) for t in taints]
+
+        heredoc_names = WRITE_HEREDOC_NAME.findall(run)
+        if heredoc_names:
+            block = self._analyze(run, line, scope, shell=True)
+            if block:
+                if step.id and REDIRECTS_TO_OUTPUT.search(run):
+                    for name in heredoc_names:
+                        key = f"steps.{step.id}.outputs.{name}"
+                        self.outputs.setdefault(
+                            (step.id, name), [t.hop_to(key, line) for t in block]
+                        )
+                if REDIRECTS_TO_ENV.search(run):
+                    for name in heredoc_names:
+                        self.env.setdefault(
+                            name, [t.hop_to(f"env.{name}", line) for t in block]
+                        )
 
     def _step_output(self, step_id: str, name: str) -> list[Taint]:
         recorded = self.outputs.get((step_id, name))

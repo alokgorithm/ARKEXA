@@ -33,10 +33,15 @@ conditions:
     level: maintainer
     note: caller must be a named account
 
-  - name: repository owner check
+  # `github.repository == 'owner/repo'` and `github.repository_owner == 'owner'`
+  # stop the workflow running in forks. They do not stop anyone triggering it
+  # on the upstream repository, which is where the token is. Treating them as
+  # guards hid real findings on workflows that had nothing else protecting
+  # them, so they are recognised and explicitly not counted.
+  - name: fork execution check
     pattern: 'github\.repository_owner\s*==|github\.repository\s*==\s*[\x27"]'
-    level: maintainer
-    note: only runs in the upstream repository
+    level: none
+    note: prevents forks running the workflow, but does not restrict who triggers it
 
   - name: label gate
     pattern: 'labels[^\n]*name|github\.event\.label\.name'

@@ -118,8 +118,14 @@ jobs:
     def test_login_allowlist_is_a_guard(self):
         self.assertEqual(external(self.workflow("github.event.comment.user.login == 'ada'")), [])
 
-    def test_repository_check_is_a_guard(self):
-        self.assertEqual(external(self.workflow("github.repository == 'owner/repo'")), [])
+    def test_a_fork_execution_check_is_not_a_guard(self):
+        """`github.repository ==` stops forks running it, not outsiders firing it.
+
+        Counting this as a guard silenced workflows whose only other protection
+        was nothing at all.
+        """
+        self.assertTrue(external(self.workflow("github.repository == 'owner/repo'")))
+        self.assertTrue(external(self.workflow("github.repository_owner == 'owner'")))
 
     def test_an_unguarded_workflow_is_still_reported(self):
         self.assertTrue(external(self.workflow("github.event.issue.pull_request")))

@@ -17,3 +17,6 @@ ARKEXA-SPEC-v2.md
 
 # Calibration corpus: real third-party workflows. Never committed.
 .calibration/
+
+# Benchmark corpus: real third-party workflows, pending disclosure decision.
+.benchmark/
