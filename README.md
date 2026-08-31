@@ -23,19 +23,21 @@ CRITICAL ARK001  untrusted-prompt-write-token                            reachab
 
 ## Install
 
-Not on PyPI yet. Until it is, install from source:
+The first published version is a pre-release, and pip does not install
+pre-releases unless you ask, so name it explicitly:
+
+```bash
+pipx install "arkexa==0.1.0a1"      # or: uv tool install "arkexa==0.1.0a1"
+```
+
+A plain `pipx install arkexa` will start working when 0.1.0 is released, and
+will keep ignoring alphas after that, which is the behaviour you want.
+
+To run it from source instead:
 
 ```bash
 pipx install git+https://github.com/alokgorithm/ARKEXA
 ```
-
-or, from a clone:
-
-```bash
-pip install .
-```
-
-Once the package is published this becomes `pipx install arkexa`.
 
 ## Use
 
@@ -153,7 +155,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: pipx install git+https://github.com/alokgorithm/ARKEXA
+      - run: pipx install "arkexa==0.1.0a1"
       - run: arkexa .
 ```
 

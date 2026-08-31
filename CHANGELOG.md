@@ -11,6 +11,10 @@ is worse than one that never ran.
 
 ## [Unreleased]
 
+Planned for 0.1.0, the first stable release:
+
+- whatever the alpha turns up when it is run against real repositories
+
 Planned for 0.2, in roughly this order:
 
 - ARK006 `secrets-exposed-to-agent`
@@ -20,7 +24,15 @@ Planned for 0.2, in roughly this order:
 - a GitHub Action wrapper
 - the labelled benchmark corpus and its first published numbers
 
-## [0.1.0] - 2026-08-31
+## [0.1.0a1] - 2026-08-31
+
+First published artifact. Functionally the whole of 0.1, released as an alpha
+so the name is claimed on PyPI and the release path is proven end to end before
+anything is called stable. Treat the rules as calibrated against fixtures and
+not yet against a corpus of real workflows.
+
+Published through PyPI trusted publishing, so no API token exists in this
+repository to leak.
 
 First release. Engine plus five rules.
 
@@ -72,12 +84,14 @@ enforced in CI.
 
 ### Known gaps
 
-- Not published to PyPI, so installation is from source.
 - The benchmark corpus in `benchmark/` is empty and `results.md` carries no
   numbers. Nothing has been measured yet, and nothing is claimed.
+- The rules are calibrated against the fixtures in this repository, not against
+  a corpus of real workflows. That is what the benchmark is for, and it is why
+  this is an alpha.
 - Composite actions and reusable workflows are resolved one level down only.
 - Remote reusable workflows (`uses: owner/repo/.github/workflows/x.yml@ref`)
   are not fetched, since ARKEXA makes no network calls.
 
-[Unreleased]: https://github.com/alokgorithm/ARKEXA/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/alokgorithm/ARKEXA/releases/tag/v0.1.0
+[Unreleased]: https://github.com/alokgorithm/ARKEXA/compare/v0.1.0a1...HEAD
+[0.1.0a1]: https://github.com/alokgorithm/ARKEXA/releases/tag/v0.1.0a1

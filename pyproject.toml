@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "arkexa"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Finds the prompt injections in your CI that an outsider can actually reach."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -34,6 +34,11 @@ arkexa = "arkexa.cli:main"
 Homepage = "https://github.com/alokgorithm/ARKEXA"
 Source = "https://github.com/alokgorithm/ARKEXA"
 Issues = "https://github.com/alokgorithm/ARKEXA/issues"
+
+[tool.hatch.version]
+# One source of truth. A release that ships a wheel whose metadata disagrees
+# with the module it contains is a release nobody can debug.
+path = "src/arkexa/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/arkexa"]

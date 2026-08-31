@@ -1,0 +1,128 @@
+name: Release
+
+# Publishing is triggered by a tag, and a tag is the only thing that triggers
+# it. Nothing here runs on a push to main, so an accidental merge cannot ship a
+# release.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  # A version on PyPI can never be reused, not even after a delete. So the
+  # checks that would normally run after a mistake have to run before it.
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Read the version out of the package
+        id: version
+        run: |
+          version=$(python -c "import re,pathlib; \
+            print(re.search(r'__version__ = \"([^\"]+)\"', \
+            pathlib.Path('src/arkexa/__init__.py').read_text()).group(1))")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "package version: $version"
+
+      - name: The tag has to match the version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="${{ steps.version.outputs.version }}"
+          if [ "$tag" != "$version" ]; then
+            echo "tag v$tag does not match package version $version"
+            echo "fix one of them and tag again; do not publish a mismatch"
+            exit 1
+          fi
+          echo "tag v$tag matches the package"
+
+      - name: Install
+        run: python -m pip install --upgrade pip .
+
+      - name: Test
+        working-directory: tests
+        run: python -m unittest discover -s . -t .
+
+      - name: Rule documentation is in sync
+        run: python tools/gen_rule_docs.py --check
+
+      - name: Scan this repository with itself
+        run: arkexa .
+
+  build:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build the sdist and the wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+
+      - name: The wheel has to contain the data files
+        # Without these the tool imports and then fails on the first scan, so
+        # this is worth failing the release over.
+        run: |
+          python -m pip install --upgrade twine
+          twine check dist/*
+          python - <<'PY'
+          import glob, sys, zipfile
+          wheel = glob.glob("dist/*.whl")[0]
+          names = zipfile.ZipFile(wheel).namelist()
+          required = [
+              "arkexa/data/agents.yml",
+              "arkexa/data/untrusted.yml",
+              "arkexa/data/guards.yml",
+          ]
+          missing = [name for name in required if name not in names]
+          if missing:
+              sys.exit(f"wheel is missing {missing}")
+          print(f"{wheel} carries all three data files")
+          PY
+
+      - name: Install the built wheel and run it
+        run: |
+          python -m venv /tmp/check
+          /tmp/check/bin/python -m pip install --quiet dist/*.whl
+          /tmp/check/bin/arkexa --version
+          /tmp/check/bin/arkexa tests/fixtures/ark001_vulnerable.yml && exit 1 || true
+          echo "the built wheel scans and exits non-zero on a finding"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      # Trusted publishing. No API token is stored in this repository.
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

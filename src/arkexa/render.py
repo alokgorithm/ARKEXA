@@ -192,5 +192,7 @@ def _version() -> str:
         from importlib.metadata import version
 
         return version("arkexa")
-    except Exception:  # pragma: no cover - source checkouts
-        return "0.1.0"
+    except Exception:  # pragma: no cover - running from a source checkout
+        from . import __version__
+
+        return __version__
