@@ -4,16 +4,34 @@
 # See CONTRIBUTING.md.
 
 # Steps that use a published action.
-#   uses            prefix match against the step's `uses:` (owner/repo)
+#   uses            match against the step's `uses:`, on a path boundary. The
+#                   most specific entry wins, so a subpath action can differ
+#                   from its parent.
 #   prompt_inputs   `with:` keys whose value is handed to the model
 #   implicit_event  true when the action ingests the triggering event's text
 #                   by design, even with no prompt input set
+#   requires_write_access
+#                   the action refuses to run for callers without write access,
+#                   which is a guard ARKEXA cannot see in the workflow file. A
+#                   finding is demoted to `maintainer` rather than dropped.
+#   bypass_inputs   `with:` keys that switch that built-in check off. When one
+#                   is present the demotion does not apply.
 actions:
   - name: claude-code-action
     uses: anthropics/claude-code-action
     prompt_inputs: [prompt, direct_prompt, override_prompt, append_system_prompt]
     implicit_event: true
+    # Documented in the action: "The action can only be triggered by users with
+    # write access to the repository", checked for issue, pull request, comment
+    # and review events.
+    requires_write_access: true
+    bypass_inputs: [allowed_non_write_users, allowed_bots]
   - name: claude-code-base-action
+    uses: anthropics/claude-code-action/base-action
+    # The base action runs the prompt it is given. It does not read the
+    # triggering event on its own, so no implicit_event here.
+    prompt_inputs: [prompt, prompt_file, append_system_prompt]
+  - name: claude-code-base-action-standalone
     uses: anthropics/claude-code-base-action
     prompt_inputs: [prompt, prompt_file, append_system_prompt]
   - name: github-ai-inference

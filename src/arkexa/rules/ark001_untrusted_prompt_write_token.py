@@ -46,32 +46,45 @@ def check(context: Context) -> Iterator[Finding]:
     scope_text = f"job '{context.job.id}' {permissions.describe()}"
 
     for agent in context.agents:
-        reported: set[str] = set()
+        level, guards = context.demoted(agent)
+        reported = False
 
         for surface in agent.prompts:
-            taints = context.taint.of_value(
-                agent.step, surface.text, surface.line, shell=surface.shell
-            )
-            for taint in taints:
-                if taint.kind != UNTRUSTED or taint.source_path in reported:
-                    continue
-                reported.add(taint.source_path)
-                destination = f"{surface.where} of {agent.label}"
-                final = taint.hop_to(destination, surface.line)
-                hops = [*final.hops, Hop(scope_text, permission_line, file=permission_file)]
-                yield context.finding(
-                    line=surface.line,
-                    hops=hops,
-                    impact=(
-                        "text an outsider controls is instruction-adjacent to an agent "
-                        "that can write to your repository"
-                    ),
-                    fix=(
-                        "pass untrusted text as a file the agent reads as data, drop the "
-                        "job to read-only permissions, or gate the job on author_association"
-                    ),
-                    opening=taint.phrase,
+            taints = [
+                taint
+                for taint in context.taint.of_value(
+                    agent.step, surface.text, surface.line, shell=surface.shell
                 )
+                if taint.kind == UNTRUSTED
+            ]
+            if not taints:
+                continue
+
+            # One prompt is one problem. An issue title and an issue body
+            # reaching the same prompt is a single finding with two sources,
+            # not two findings, and reporting it twice trains people to skim.
+            taint = taints[0]
+            others = [t.label for t in taints[1:]]
+            reported = True
+            destination = f"{surface.where} of {agent.label}"
+            final = taint.hop_to(destination, surface.line)
+            hops = [*final.hops, Hop(scope_text, permission_line, file=permission_file)]
+            also = f" (also reached by {', '.join(others)})" if others else ""
+            yield context.finding(
+                line=surface.line,
+                hops=hops,
+                impact=(
+                    "text an outsider controls is instruction-adjacent to an agent "
+                    f"that can write to your repository{also}"
+                ),
+                fix=(
+                    "pass untrusted text as a file the agent reads as data, drop the "
+                    "job to read-only permissions, or gate the job on author_association"
+                ),
+                opening=taint.phrase,
+                reachability=level,
+                guards=guards,
+            )
 
         if agent.implicit_event and not reported:
             external_events = [
@@ -111,4 +124,6 @@ def check(context: Context) -> Iterator[Finding]:
                     "set an explicit prompt that treats the event text as data, or drop "
                     "the job to read-only permissions"
                 ),
+                reachability=level,
+                guards=guards,
             )

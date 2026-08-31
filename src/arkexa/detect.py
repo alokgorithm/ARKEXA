@@ -35,6 +35,10 @@ class Agent:
     prompts: list[PromptSurface] = field(default_factory=list)
     command_lines: list[tuple[str, int]] = field(default_factory=list)
     implicit_event: bool = False
+    # Set when the action performs its own caller-permission check, which is a
+    # guard that exists nowhere in the workflow file. Findings are demoted
+    # rather than dropped, because the check is the vendor's to change.
+    builtin_guard: str = ""
 
     @property
     def label(self) -> str:
@@ -98,22 +102,37 @@ def agent_for_step(step: Step) -> Agent | None:
 
     uses = step.uses or ""
     if uses:
-        reference = uses.split("@")[0].strip()
-        for entry in data.get("actions", []):
-            if reference.lower().startswith(entry["uses"].lower()):
-                agent = Agent(
-                    name=entry["name"],
-                    kind="action",
-                    step=step,
-                    implicit_event=bool(entry.get("implicit_event")),
-                )
-                for key in entry.get("prompt_inputs", []):
-                    value = step.with_.get(key)
-                    if isinstance(value, str) and value.strip():
-                        agent.prompts.append(
-                            PromptSurface(value, step.with_line(key), f"the {key} input")
-                        )
-                return agent
+        reference = uses.split("@")[0].strip().lower()
+        # Most specific first, so `claude-code-action/base-action` is not
+        # mistaken for `claude-code-action`, which behaves differently.
+        entries = sorted(
+            data.get("actions", []), key=lambda e: len(e["uses"]), reverse=True
+        )
+        for entry in entries:
+            prefix = entry["uses"].lower()
+            if reference != prefix and not reference.startswith(prefix + "/"):
+                continue
+            agent = Agent(
+                name=entry["name"],
+                kind="action",
+                step=step,
+                implicit_event=bool(entry.get("implicit_event")),
+            )
+            if entry.get("requires_write_access"):
+                bypassed = [
+                    key for key in entry.get("bypass_inputs", []) if key in step.with_
+                ]
+                if not bypassed:
+                    agent.builtin_guard = (
+                        f"{entry['name']} only runs for callers with write access"
+                    )
+            for key in entry.get("prompt_inputs", []):
+                value = step.with_.get(key)
+                if isinstance(value, str) and value.strip():
+                    agent.prompts.append(
+                        PromptSurface(value, step.with_line(key), f"the {key} input")
+                    )
+            return agent
 
     run = step.run
     if not run:

@@ -25,13 +25,16 @@ conditions:
     level: maintainer
     note: caller must be an owner, member or collaborator
 
+  # Real workflows name the caller in several ways. Only matching github.actor
+  # misses the most common one, which is the login on the event payload.
   - name: actor allowlist
-    pattern: 'github\.(actor|triggering_actor)\s*==|contains\([^)]*github\.(actor|triggering_actor)'
+    pattern: >-
+      github\.(actor|triggering_actor)\s*==|contains\([^)]*github\.(actor|triggering_actor)|github\.event\.[A-Za-z_.]*user\.login\s*==|contains\([^)]*user\.login
     level: maintainer
     note: caller must be a named account
 
   - name: repository owner check
-    pattern: 'github\.repository_owner\s*=='
+    pattern: 'github\.repository_owner\s*==|github\.repository\s*==\s*[\x27"]'
     level: maintainer
     note: only runs in the upstream repository
 

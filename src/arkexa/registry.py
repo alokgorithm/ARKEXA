@@ -66,6 +66,23 @@ class Context:
     def rel(self) -> str:
         return self.workflow.rel
 
+    def demoted(self, agent) -> tuple[str, list[tuple[str, str, int]]]:
+        """Reachability for a finding about this agent, and the guards behind it.
+
+        An action that checks its caller permissions itself is a guard that
+        appears nowhere in the workflow file. Ignoring it makes ARKEXA claim a
+        stranger can reach something the vendor already blocks.
+        """
+        from .reach import rank
+
+        guards = list(self.reach.guards)
+        level = self.reach.level
+        if getattr(agent, "builtin_guard", ""):
+            guards.append((agent.builtin_guard, "maintainer", agent.step.line))
+            if rank("maintainer") < rank(level):
+                level = "maintainer"
+        return level, guards
+
     def finding(
         self,
         line: int,
@@ -74,6 +91,7 @@ class Context:
         fix: str,
         opening: str = "",
         reachability: str | None = None,
+        guards: list[tuple[str, str, int]] | None = None,
     ) -> Finding:
         """Build a finding. The engine stamps rule id, name and severity on it."""
         return Finding(
@@ -89,7 +107,7 @@ class Context:
             hops=list(hops),
             impact=impact,
             fix=fix,
-            guards=list(self.reach.guards),
+            guards=list(self.reach.guards) if guards is None else list(guards),
         )
 
 

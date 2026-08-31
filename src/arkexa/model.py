@@ -191,7 +191,16 @@ class Job:
         return Permissions({}, declared=False, line=self.line, source="default")
 
     def guard_conditions(self) -> list[tuple[str, int]]:
+        """`if:` expressions guarding this job, including those it depends on.
+
+        A job that depends on an authorisation job is guarded by whatever that
+        job checked, so the text of its steps counts too. Real workflows gate
+        on `needs.authorize.outputs.ok` far more often than they put an
+        `author_association` check inline, and a scanner that only reads `if:`
+        calls those workflows externally reachable when they are not.
+        """
         found: list[tuple[str, int]] = []
+        conditions: list[str] = []
         seen: set[str] = set()
         queue = [self.id]
         while queue:
@@ -204,8 +213,38 @@ class Job:
                 continue
             if job.if_:
                 found.append((job.if_, job.raw.key_line("if", job.line)))
+                conditions.append(job.if_)
             queue.extend(job.needs)
+
+        # Only a job whose output is actually consulted counts as a gate.
+        # Merely depending on a job does not gate anything, and treating it as
+        # a guard would silently hide real findings.
+        for job_id in seen:
+            if job_id == self.id:
+                continue
+            marker = f"needs.{job_id}.outputs"
+            if any(marker in condition for condition in conditions):
+                job = self.workflow.jobs.get(job_id)
+                if job is not None:
+                    found.extend(job.gate_evidence())
         return found
+
+    def gate_evidence(self) -> list[tuple[str, int]]:
+        """Text from a job that exists to decide whether later jobs may run."""
+        if not self.raw.get("outputs"):
+            return []
+        evidence: list[tuple[str, int]] = []
+        for step in self.steps:
+            for key in ("run", "script"):
+                value = step.raw.get(key)
+                if isinstance(value, str):
+                    evidence.append((value, step.line_for(key)))
+            with_block = step.with_
+            if isinstance(with_block, dict):
+                for key, value in with_block.items():
+                    if isinstance(value, str) and key in ("script", "permission"):
+                        evidence.append((value, step.with_line(str(key))))
+        return evidence
 
 
 @dataclass

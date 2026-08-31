@@ -52,6 +52,14 @@ def _wildcard_in_inputs(step) -> tuple[str, int] | None:
     explanation=EXPLANATION,
 )
 def check(context: Context) -> Iterator[Finding]:
+    permissions = context.job.permissions
+    # An agent with no approval gate and no write scope cannot do much with the
+    # token it was not given. Calibration against real workflows showed this
+    # shape is common and reporting it is noise, so the rule now needs the job
+    # to actually hold something worth misusing.
+    if permissions.declared and not permissions.write_scopes:
+        return
+
     for agent in context.agents:
         step = agent.step
         hit: tuple[str, int] | None = None
@@ -73,7 +81,7 @@ def check(context: Context) -> Iterator[Finding]:
             continue
 
         text, line = hit
-        permissions = context.job.permissions
+        level, guards = context.demoted(agent)
         hops = [
             Hop(text, line),
             Hop(
@@ -93,4 +101,6 @@ def check(context: Context) -> Iterator[Finding]:
                 "allowlist only the tools this job needs, or run the agent without "
                 "credentials on the runner"
             ),
+            reachability=level,
+            guards=guards,
         )

@@ -21,6 +21,11 @@ Fix: push to a branch and open a pull request, drop `--admin`, and let a human
 or a required check merge.
 """
 
+# `git push origin HEAD:$BRANCH` targets whatever the variable holds, which is
+# usually a topic branch. Calibration turned up a workflow doing exactly that
+# and being reported as writing to the default branch, so a refspec whose
+# destination is a variable is explicitly not a match.
+PUSH_TO_VARIABLE = re.compile(r"git\s+push[^\n;|&]*:\s*[\"']?\$", re.IGNORECASE)
 PUSH_DEFAULT = re.compile(
     r"git\s+push[^\n;|&]*\b(origin\s+)?(HEAD(:refs/heads/(main|master))?|main|master)\b"
     r"|git\s+push\s+origin\s+HEAD\b",
@@ -63,6 +68,8 @@ def check(context: Context) -> Iterator[Finding]:
         run = step.run or ""
         line = step.line_for("run")
 
+        if PUSH_TO_VARIABLE.search(run):
+            continue
         if PUSH_DEFAULT.search(run) or BARE_PUSH.search(run):
             hit = (f"{step.name} pushes to the default branch", line)
         elif ADMIN_MERGE.search(run):
