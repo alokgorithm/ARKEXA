@@ -1,0 +1,19 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a vulnerability in ARKEXA
+    url: https://github.com/alokgorithm/ARKEXA/security/advisories/new
+    about: >
+      Please do not open a public issue for a security bug in ARKEXA itself.
+      Use private vulnerability reporting instead.
+
+  - name: A finding in someone else's repository
+    url: https://github.com/alokgorithm/ARKEXA/blob/main/SECURITY.md
+    about: >
+      Do not post it here. Report it privately to that project first. The
+      disclosure policy is binding on this project.
+
+  - name: Add support for an agent ARKEXA does not recognise
+    url: https://github.com/alokgorithm/ARKEXA/blob/main/CONTRIBUTING.md
+    about: >
+      Usually a one-line pull request to src/arkexa/data/agents.yml. No Python
+      required, and no issue needed first.
