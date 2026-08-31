@@ -14,6 +14,7 @@ from pathlib import Path
 
 from support import FIXTURES  # noqa: F401
 
+from arkexa import reach
 from arkexa.engine import scan
 
 
@@ -246,6 +247,63 @@ jobs:
     def test_the_other_source_is_still_named(self):
         found = [f for f in findings(self.SOURCE) if f.rule == "ARK001"][0]
         self.assertIn("also reached by", found.impact)
+
+
+class ForkTokenTest(unittest.TestCase):
+    """`pull_request` is not `pull_request_target`, whatever the scopes say.
+
+    A fork pull request on `pull_request` runs with a read-only GITHUB_TOKEN
+    and no secrets, so the `pull-requests: write` the workflow declares is not
+    granted to the outsider who triggered it. Calling that externally reachable
+    described an exploit path that does not exist. It is a real finding for a
+    same-repo branch, which needs write access, so it demotes rather than
+    disappearing.
+    """
+
+    def workflow(self, event: str) -> str:
+        return f"""
+on:
+  {event}:
+    types: [opened]
+permissions:
+  pull-requests: write
+  models: read
+jobs:
+  check:
+    steps:
+      - uses: actions/ai-inference@v1
+        name: Analyse pull request changes
+        with:
+          prompt: "Review ${{{{ github.event.pull_request.title }}}}"
+"""
+
+    def ark001(self, event: str):
+        found = [f for f in findings(self.workflow(event)) if f.rule == "ARK001"]
+        self.assertEqual(len(found), 1, f"expected one ARK001 on {event}")
+        return found[0]
+
+    def test_a_fork_pull_request_is_not_an_external_write(self):
+        self.assertEqual(self.ark001("pull_request").reachability, "maintainer")
+
+    def test_the_finding_survives_the_demotion(self):
+        """Demote, never delete. A same-repo branch still reaches this."""
+        self.assertTrue(external(self.workflow("pull_request_target")))
+        self.assertTrue(findings(self.workflow("pull_request")))
+
+    def test_the_reason_is_shown_not_hidden(self):
+        names = [name for name, _, _ in self.ark001("pull_request").guards]
+        self.assertIn(reach.FORK_TOKEN_GUARD, names)
+
+    def test_pull_request_target_is_untouched(self):
+        self.assertEqual(self.ark001("pull_request_target").reachability, "external")
+
+    def test_another_external_trigger_still_wins(self):
+        """`issue_comment` runs on the base repo with the full token."""
+        both = self.workflow("pull_request").replace(
+            "on:\n  pull_request:\n    types: [opened]",
+            "on:\n  pull_request:\n    types: [opened]\n  issue_comment:\n    types: [created]",
+        )
+        self.assertTrue([f for f in external(both) if f.rule == "ARK001"])
 
 
 class InvalidWorkflowTest(unittest.TestCase):

@@ -11,6 +11,21 @@ is worse than one that never ran.
 
 ## [Unreleased]
 
+### Changed
+
+- **A fork pull request on `pull_request` no longer counts as an external
+  write.** GitHub hands a fork pull request a read-only `GITHUB_TOKEN` and no
+  secrets on `pull_request`, whatever `permissions:` the workflow declares, so
+  an exploit path that ended in "the job holds `pull-requests: write`" was
+  describing a scope the outsider never gets. Such findings now demote to
+  `maintainer` with the reason printed, because a same-repo branch — which
+  needs write access — still reaches them. **This makes ARK001 and ARK004
+  report less by default.** `pull_request_target` is the opposite case and is
+  deliberately unaffected, as is any workflow that also listens to a genuinely
+  external trigger such as `issue_comment`. Found by re-running the calibration
+  corpus: it was 1 of the 5 externally reachable findings across 85 real
+  workflows, and is now 1 of 4.
+
 Planned for 0.1.0, the first stable release:
 
 - whatever the alpha turns up when it is run against real repositories

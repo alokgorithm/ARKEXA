@@ -63,6 +63,14 @@ PRIVILEGED_TYPES = {
 }
 
 
+# A fork pull request on `pull_request` runs with a read-only GITHUB_TOKEN and
+# no secrets, whatever the workflow declares. The outsider still starts the
+# job, but not the write scope the finding rests on, so it is a maintainer
+# problem until the repository opts into sending fork pull requests more.
+# `pull_request_target` is the opposite case, and is deliberately not here.
+FORK_TOKEN_GUARD = "the read-only token a fork pull request gets"
+
+
 def _trigger_level(event: str, config=None) -> str:
     triggers = data_files.untrusted().get("triggers", {})
     level = "maintainer"
@@ -176,6 +184,18 @@ def classify(workflow: Workflow, job: Job) -> Reachability:
         guard_level = guards[0][1]
         if rank(guard_level) < rank(result.level):
             result.level = guard_level
+
+    # Only when `pull_request` is the sole way in. A workflow that also listens
+    # to `issue_comment` is still externally reachable through that, with the
+    # full token, and demoting it would hide a real finding.
+    external = {
+        event
+        for event, config in workflow.triggers.items()
+        if _trigger_level(event, config) == "external"
+    }
+    if external == {"pull_request"} and rank(result.level) > rank("maintainer"):
+        result.level = "maintainer"
+        result.guards = [*result.guards, (FORK_TOKEN_GUARD, "maintainer", workflow.on_line)]
     return result
 
 
