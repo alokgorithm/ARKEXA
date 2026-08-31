@@ -1,0 +1,59 @@
+# Mitigations already present in a workflow. A guard does not delete a finding;
+# it lowers who can reach it, and the default output only shows `external`.
+# So fixing the guard makes the finding disappear on its own.
+#
+#   pattern   regular expression, matched case-insensitively against an `if:`
+#   level     the reachability the guarded job drops to, or `none` when the
+#             condition looks like a guard but does not actually exclude anyone
+#
+# Order matters: the first pattern to match a condition wins, so the most
+# specific entries come first.
+
+conditions:
+  - name: author_association allows first-time contributors
+    pattern: 'author_association[^\n]*(NONE|FIRST_TIM)|(NONE|FIRST_TIM)[^\n]*author_association'
+    level: none
+    note: the allowlist includes accounts with no history, so it excludes nobody
+
+  - name: author_association allows contributors
+    pattern: 'author_association[^\n]*CONTRIBUTOR|CONTRIBUTOR[^\n]*author_association'
+    level: contributor
+    note: caller must have had a pull request merged
+
+  - name: author_association allowlist
+    pattern: 'author_association'
+    level: maintainer
+    note: caller must be an owner, member or collaborator
+
+  - name: actor allowlist
+    pattern: 'github\.(actor|triggering_actor)\s*==|contains\([^)]*github\.(actor|triggering_actor)'
+    level: maintainer
+    note: caller must be a named account
+
+  - name: repository owner check
+    pattern: 'github\.repository_owner\s*=='
+    level: maintainer
+    note: only runs in the upstream repository
+
+  - name: label gate
+    pattern: 'labels[^\n]*name|github\.event\.label\.name'
+    level: maintainer
+    note: someone with triage access must apply the label
+
+  - name: non-fork check
+    pattern: 'head\.repo\.(full_name|id)\s*==|head\.repo\.fork\s*=='
+    level: maintainer
+    note: only runs for branches pushed to this repository
+
+  - name: permission check
+    pattern: 'user\.permission|collaborator-permission|check-user-permission'
+    level: maintainer
+    note: caller must hold repository permission
+
+# Guards that are not `if:` conditions. Narrowed permissions remove a finding
+# outright for the rules that need a write scope, rather than demoting it.
+settings:
+  - name: narrowed permissions
+    note: the job declares no write scope
+  - name: persist-credentials false
+    note: the checkout step does not leave a token on disk

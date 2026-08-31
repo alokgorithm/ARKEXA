@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "arkexa"
+version = "0.1.0"
+description = "Finds the prompt injections in your CI that an outsider can actually reach."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "alokgorithm", email = "183237294+alokgorithm@users.noreply.github.com" }]
+keywords = [
+  "github-actions", "security", "static-analysis", "prompt-injection",
+  "llm", "agents", "supply-chain", "ci",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Security",
+  "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = ["PyYAML>=6.0"]
+
+[project.scripts]
+arkexa = "arkexa.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/alokgorithm/ARKEXA"
+Source = "https://github.com/alokgorithm/ARKEXA"
+Issues = "https://github.com/alokgorithm/ARKEXA/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/arkexa"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/arkexa", "tests", "docs", "benchmark", "README.md", "LICENSE"]

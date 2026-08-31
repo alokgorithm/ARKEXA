@@ -1,0 +1,16 @@
+# The dangerous part is not in this file. It is one level down, in a local
+# composite action, which is where most scanners stop looking.
+name: Wrapped
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: ./.github/actions/summarise
+        with:
+          body: ${{ github.event.issue.body }}

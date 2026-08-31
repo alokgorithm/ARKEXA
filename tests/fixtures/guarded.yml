@@ -1,0 +1,18 @@
+# The same dangerous shape as ark001_vulnerable, with an author_association
+# gate. ARKEXA still knows about it, but demotes it out of the default report.
+name: Triage
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  triage:
+    if: github.event.comment.author_association == 'OWNER'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      BODY: ${{ github.event.comment.body }}
+    steps:
+      - name: Ask the model
+        run: claude -p "$BODY"

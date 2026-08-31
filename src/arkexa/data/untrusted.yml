@@ -1,0 +1,112 @@
+# Attacker-controlled values, and which events let a stranger set them.
+#
+# `path` is a regular expression matched against the inside of a ${{ }}
+# expression. `label` names the value in an exploit path. `phrase` is the first
+# line of that path — what the attacker actually does.
+
+sources:
+  - path: 'github\.event\.issue\.title'
+    label: issue title
+    phrase: an outsider opens an issue
+  - path: 'github\.event\.issue\.body'
+    label: issue body
+    phrase: an outsider opens an issue
+  - path: 'github\.event\.comment\.body'
+    label: comment body
+    phrase: an outsider comments
+  - path: 'github\.event\.discussion\.(title|body)'
+    label: discussion text
+    phrase: an outsider opens a discussion
+  - path: 'github\.event\.pull_request\.title'
+    label: pull request title
+    phrase: an outsider opens a pull request from a fork
+  - path: 'github\.event\.pull_request\.body'
+    label: pull request body
+    phrase: an outsider opens a pull request from a fork
+  - path: 'github\.event\.pull_request\.head\.(ref|label)'
+    label: fork branch name
+    phrase: an outsider opens a pull request from a fork
+  - path: 'github\.event\.pull_request\.head\.repo\.(full_name|description|homepage|owner\.login)'
+    label: fork repository metadata
+    phrase: an outsider opens a pull request from a fork
+  - path: 'github\.head_ref'
+    label: source branch name
+    phrase: an outsider opens a pull request from a fork
+  - path: 'github\.event\.review\.body'
+    label: review body
+    phrase: an outsider reviews a pull request
+  - path: 'github\.event\.review_comment\.body'
+    label: review comment body
+    phrase: an outsider comments on a pull request
+  - path: 'github\.event\.head_commit\.message'
+    label: commit message
+    phrase: a commit message reaches the workflow
+  - path: 'github\.event\.commits'
+    label: commit metadata
+    phrase: a commit message reaches the workflow
+  - path: 'github\.event\.workflow_run\.(head_branch|display_title|head_commit\.message)'
+    label: upstream workflow run metadata
+    phrase: an outsider triggers the upstream workflow
+  - path: 'github\.event\.client_payload'
+    label: repository_dispatch payload
+    phrase: a dispatch payload reaches the workflow
+  - path: 'github\.event\.pages'
+    label: wiki page name
+    phrase: a wiki edit reaches the workflow
+  - path: 'github\.event\.release\.(name|body)'
+    label: release notes
+    phrase: a release description reaches the workflow
+  - path: 'github\.event\.milestone\.(title|description)'
+    label: milestone text
+    phrase: a milestone description reaches the workflow
+  - path: 'github\.event\.inputs\.[A-Za-z_]'
+    label: workflow input
+    phrase: someone who can dispatch the workflow supplies an input
+  - path: 'github\.event\.issue\.user\.login|github\.event\.comment\.user\.login|github\.event\.pull_request\.user\.login'
+    label: account login
+    phrase: an outsider chooses their account name
+
+# Which events a given actor can cause. Reachability is the highest level any
+# of a workflow's triggers reaches, before guards are applied.
+triggers:
+  external:
+    - issues
+    - issue_comment
+    - pull_request
+    - pull_request_target
+    - pull_request_review
+    - pull_request_review_comment
+    - discussion
+    - discussion_comment
+    - fork
+    - watch
+    - star
+    - public
+    - workflow_run
+  maintainer:
+    - push
+    - create
+    - delete
+    - release
+    - label
+    - milestone
+    - project
+    - project_card
+    - project_column
+    - registry_package
+    - deployment
+    - deployment_status
+    - page_build
+    - gollum
+    - status
+    - check_run
+    - check_suite
+    - merge_group
+    - repository_dispatch
+    - branch_protection_rule
+    - member
+    - membership
+  unreachable:
+    - workflow_dispatch
+    - schedule
+    - workflow_call

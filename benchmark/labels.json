@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "description": "Hand labels for the ARKEXA benchmark corpus. Written before any scanner is run. See ../METHODOLOGY.md.",
+  "target": {
+    "vulnerable": 30,
+    "clean": 30
+  },
+  "fields": {
+    "id": "corpus id, matching a file in workflows/",
+    "sha": "commit sha the workflow was taken at, so the corpus is reproducible",
+    "triggers": "the events declared in the workflow",
+    "label": "vulnerable | clean",
+    "reachability": "external | contributor | maintainer | unreachable",
+    "expected_rules": "rule ids a correct scanner should report, empty for clean",
+    "rationale": "the exploit path for vulnerable, the reason it is safe for clean",
+    "labeller": "initials",
+    "reviewed": "YYYY-MM-DD"
+  },
+  "workflows": []
+}

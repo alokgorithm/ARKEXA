@@ -1,0 +1,24 @@
+# ARK003: the model chooses the branch a later step checks out.
+name: Autofix
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - id: ai
+        uses: actions/ai-inference@v1
+        with:
+          prompt: Which branch should we patch?
+      - name: Check out what the model picked
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.ai.outputs.response }}
+      - name: Branch from it
+        env:
+          TARGET: ${{ steps.ai.outputs.response }}
+        run: git checkout -b "$TARGET"

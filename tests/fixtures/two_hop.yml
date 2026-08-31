@@ -1,0 +1,15 @@
+# Taint travels through $GITHUB_ENV into a later step. A scanner that only
+# looks at the step in front of it misses this entirely.
+name: Two hop
+on: [issues]
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Stash the title
+        run: echo "TITLE=${{ github.event.issue.title }}" >> "$GITHUB_ENV"
+      - name: Much later
+        run: claude -p "Summarise $TITLE"

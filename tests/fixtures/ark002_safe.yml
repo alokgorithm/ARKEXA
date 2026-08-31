@@ -1,0 +1,21 @@
+# Safe: the model answer goes through env and is never parsed as script.
+name: Suggest
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  suggest:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - id: ai
+        uses: actions/ai-inference@v1
+        with:
+          prompt: ${{ github.event.comment.body }}
+      - name: Post it
+        env:
+          ANSWER: ${{ steps.ai.outputs.response }}
+        run: |
+          printf '%s' "$ANSWER" > answer.txt

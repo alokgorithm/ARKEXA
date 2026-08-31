@@ -1,0 +1,21 @@
+# Safe: the agent's work goes through a pull request, which is the review gate.
+name: Docs bot
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rewrite the docs
+        run: claude -p "Update the changelog"
+      - name: Open a pull request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: docs-bot/changelog
+          title: Update the changelog

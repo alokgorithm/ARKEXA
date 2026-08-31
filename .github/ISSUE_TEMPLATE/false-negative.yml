@@ -1,0 +1,41 @@
+name: False negative
+description: ARKEXA missed something it should have found
+labels: ["false-negative"]
+body:
+  - type: textarea
+    id: workflow
+    attributes:
+      label: The workflow ARKEXA stayed quiet about
+      render: yaml
+    validations:
+      required: true
+
+  - type: textarea
+    id: path
+    attributes:
+      label: The exploit path
+      description: >
+        How does an outsider get from text they control to a privileged action?
+        If the answer needs write access to begin with, check the output of
+        `arkexa --reachability all` first: the finding may be there, demoted
+        rather than missing.
+    validations:
+      required: true
+
+  - type: input
+    id: agent
+    attributes:
+      label: Which agent does the workflow run
+      description: >
+        If ARKEXA does not recognise it, adding it to agents.yml is a one-line
+        pull request and is very welcome.
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: "arkexa --version"
+    validations:
+      required: true

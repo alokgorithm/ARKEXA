@@ -1,0 +1,19 @@
+# ARK005: agent output reaches the default branch with no review.
+name: Docs bot
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rewrite the docs
+        run: claude -p "Update the changelog"
+      - name: Ship it
+        run: |
+          git commit -am "docs: update"
+          git push origin main

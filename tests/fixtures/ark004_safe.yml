@@ -1,0 +1,15 @@
+# Safe: the agent runs with an explicit, narrow tool allowlist.
+name: Nightly agent
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  work:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Let it work
+        run: claude --allowedTools "Read,Grep" -p "Fix the failing test"

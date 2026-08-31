@@ -1,0 +1,142 @@
+# Signatures that identify a workflow step as "an LLM agent runs here".
+#
+# Adding support for a new agent is a one-line change to this file. No Python.
+# See CONTRIBUTING.md.
+
+# Steps that use a published action.
+#   uses            prefix match against the step's `uses:` (owner/repo)
+#   prompt_inputs   `with:` keys whose value is handed to the model
+#   implicit_event  true when the action ingests the triggering event's text
+#                   by design, even with no prompt input set
+actions:
+  - name: claude-code-action
+    uses: anthropics/claude-code-action
+    prompt_inputs: [prompt, direct_prompt, override_prompt, append_system_prompt]
+    implicit_event: true
+  - name: claude-code-base-action
+    uses: anthropics/claude-code-base-action
+    prompt_inputs: [prompt, prompt_file, append_system_prompt]
+  - name: github-ai-inference
+    uses: actions/ai-inference
+    prompt_inputs: [prompt, system-prompt, prompt-file]
+  - name: gemini-cli-action
+    uses: google-github-actions/run-gemini-cli
+    prompt_inputs: [prompt, settings]
+    implicit_event: true
+  - name: codex-action
+    uses: openai/codex-action
+    prompt_inputs: [prompt, prompt-file]
+  - name: openai-assistant-action
+    uses: openai/openai-assistants-action
+    prompt_inputs: [prompt, message]
+  - name: aider-action
+    uses: mirrajabi/aider-github-action
+    prompt_inputs: [message, args]
+  - name: continue-action
+    uses: continuedev/continue-github-action
+    prompt_inputs: [prompt]
+  - name: sweep-action
+    uses: sweepai/sweep-action
+    prompt_inputs: [prompt, instructions]
+  - name: cursor-agent-action
+    uses: cursor/cursor-agent-action
+    prompt_inputs: [prompt]
+    implicit_event: true
+  - name: amp-action
+    uses: sourcegraph/amp-action
+    prompt_inputs: [prompt]
+  - name: goose-action
+    uses: block/goose-github-action
+    prompt_inputs: [instructions, prompt]
+  - name: opencode-action
+    uses: sst/opencode
+    prompt_inputs: [prompt, model]
+    implicit_event: true
+
+# Steps that shell out to an agent CLI.
+#   exe            first word of a command line, matched on a word boundary
+#   prompt_flags   flags whose argument is the prompt; informational, the whole
+#                  command line is treated as the prompt surface either way
+commands:
+  - name: claude-code
+    exe: claude
+    prompt_flags: ["-p", "--print", "--prompt"]
+  - name: codex
+    exe: codex
+    prompt_flags: ["exec", "-p"]
+  - name: gemini-cli
+    exe: gemini
+    prompt_flags: ["-p", "--prompt"]
+  - name: aider
+    exe: aider
+    prompt_flags: ["-m", "--message", "--message-file"]
+  - name: cursor-agent
+    exe: cursor-agent
+    prompt_flags: ["-p", "--print"]
+  - name: amp
+    exe: amp
+    prompt_flags: ["-x", "--execute"]
+  - name: goose
+    exe: goose
+    prompt_flags: ["-t", "--text", "run"]
+  - name: opencode
+    exe: opencode
+    prompt_flags: ["run", "-p"]
+  - name: openhands
+    exe: openhands
+    prompt_flags: ["-t", "--task"]
+  - name: llm-cli
+    exe: llm
+    prompt_flags: ["-s", "--system"]
+  - name: shell-gpt
+    exe: sgpt
+    prompt_flags: ["--shell", "--code"]
+  - name: ollama
+    exe: ollama
+    prompt_flags: ["run"]
+  - name: crush
+    exe: crush
+    prompt_flags: ["run"]
+  - name: copilot-cli
+    exe: copilot
+    prompt_flags: ["-p", "--prompt"]
+
+# Direct calls to an inference endpoint. Any command line mentioning one of
+# these hosts is treated as an agent step.
+endpoints:
+  - api.anthropic.com
+  - api.openai.com
+  - generativelanguage.googleapis.com
+  - api.groq.com
+  - openrouter.ai
+  - api.mistral.ai
+  - api.cohere.ai
+  - api.deepseek.com
+  - api.x.ai
+  - models.inference.ai.azure.com
+  - models.github.ai
+
+# Flags and settings that remove the human from the loop. Used by ARK004.
+autoapprove:
+  - flag: "--dangerously-skip-permissions"
+    tool: claude
+  - flag: "--dangerously-bypass-approvals-and-sandbox"
+    tool: codex
+  - flag: "--yolo"
+    tool: gemini / crush
+  - flag: "--auto-approve"
+    tool: generic
+  - flag: "--approval-mode yolo"
+    tool: gemini
+  - flag: "--permission-mode bypassPermissions"
+    tool: claude
+  - flag: "--full-auto"
+    tool: codex
+  - flag: "--no-confirm"
+    tool: generic
+  - flag: "--force-yes"
+    tool: generic
+  - flag: "--sandbox danger-full-access"
+    tool: codex
+  - flag: "--yes"
+    tool: aider

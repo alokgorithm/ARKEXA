@@ -1,0 +1,12 @@
+name: summarise
+inputs:
+  body:
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        TEXT: ${{ inputs.body }}
+      run: |
+        claude -p "Summarise the following. $TEXT"

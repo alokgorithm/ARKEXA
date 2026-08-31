@@ -1,0 +1,43 @@
+name: False positive
+description: ARKEXA reported something that is not a real problem
+labels: ["false-positive"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A false positive is a bug of the same severity as a false negative, and
+        the more urgent of the two. Thank you for reporting it.
+
+  - type: input
+    id: rule
+    attributes:
+      label: Rule
+      placeholder: ARK001
+    validations:
+      required: true
+
+  - type: textarea
+    id: workflow
+    attributes:
+      label: The smallest workflow that reproduces it
+      render: yaml
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: Why this shape is safe
+      description: >
+        The reason usually becomes a guard in guards.yml, which means ARKEXA
+        will stay quiet about this shape everywhere, not just for you.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: "arkexa --version"
+    validations:
+      required: true

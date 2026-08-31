@@ -1,0 +1,23 @@
+# Safe: the model answer is content, not a location. The path is fixed and the
+# branch name is derived from the run id.
+name: Autofix
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - id: ai
+        uses: actions/ai-inference@v1
+        with:
+          prompt: Suggest a patch.
+      - name: Save the suggestion
+        env:
+          ANSWER: ${{ steps.ai.outputs.response }}
+        run: |
+          printf '%s' "$ANSWER" > suggestion.md
+          git checkout -b "autofix/${{ github.run_id }}"

@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+.DS_Store
+
+# Positioning and launch notes. Local only, never committed.
+ARKEXA-SPEC-v2.md
+.old_sha.txt
+.scratch/

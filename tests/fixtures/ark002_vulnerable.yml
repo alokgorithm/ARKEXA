@@ -1,0 +1,19 @@
+# ARK002: model output is interpolated straight into a run: block.
+name: Suggest
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  suggest:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - id: ai
+        uses: actions/ai-inference@v1
+        with:
+          prompt: ${{ github.event.comment.body }}
+      - name: Post it
+        run: |
+          echo "${{ steps.ai.outputs.response }}"

@@ -1,0 +1,15 @@
+# ARK004: the agent runs with its approval prompts disabled.
+name: Nightly agent
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  work:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Let it work
+        run: claude --dangerously-skip-permissions -p "Fix the failing test"

@@ -1,0 +1,15 @@
+# Dispatch and schedule only. Nobody without write access can start this.
+name: Nightly
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * *"
+
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Ask the model
+        run: claude -p "${{ github.event.inputs.task }}"
