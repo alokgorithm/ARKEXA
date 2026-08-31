@@ -33,6 +33,19 @@ benchmark/
    If you cannot say why it is safe, it is not `clean`. Either way it goes to
    `excluded.json` instead.
 
+`tools/label.py` does steps 2 and 3 for you, one workflow at a time:
+
+```bash
+python tools/label.py --labeller AS           # the whole corpus
+python tools/label.py --labeller AS --limit 20 # stop after twenty
+```
+
+It shows the workflow, its triggers and its permissions, and refuses to record
+a verdict without a written reason. It cannot show you a scanner's opinion
+because it cannot reach one - it never imports `arkexa` and never runs a
+subprocess, and `tests/test_tools.py` fails if that ever stops being true.
+Labels are written after every answer, so stopping halfway costs nothing.
+
 ## Scoring
 
 ```bash
