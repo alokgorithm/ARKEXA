@@ -3,7 +3,6 @@
 **Finds the prompt injections in your CI that an outsider can actually reach.**
 
 [![CI](https://github.com/alokgorithm/ARKEXA/actions/workflows/ci.yml/badge.svg)](https://github.com/alokgorithm/ARKEXA/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/arkexa)](https://pypi.org/project/arkexa/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 You wired an AI agent into GitHub Actions. It reads issue bodies. It holds a
@@ -24,9 +23,19 @@ CRITICAL ARK001  untrusted-prompt-write-token                            reachab
 
 ## Install
 
+Not on PyPI yet. Until it is, install from source:
+
 ```bash
-pipx install arkexa      # or: uv tool install arkexa
+pipx install git+https://github.com/alokgorithm/ARKEXA
 ```
+
+or, from a clone:
+
+```bash
+pip install .
+```
+
+Once the package is published this becomes `pipx install arkexa`.
 
 ## Use
 
@@ -144,13 +153,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: pipx install arkexa
+      - run: pipx install git+https://github.com/alokgorithm/ARKEXA
       - run: arkexa .
 ```
 
 ## Configuration
 
-`.arkexa.yml`, in the root of the repository:
+`.arkexa.yml`, in the root of the repository. There is a fully commented
+[`.arkexa.yml.example`](.arkexa.yml.example) to copy:
 
 ```yaml
 ignore:
@@ -183,7 +193,12 @@ rules that bind it, are in [METHODOLOGY.md](METHODOLOGY.md).
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). False positives are treated as bugs of
 the same severity as false negatives; there are issue templates for both, and
-every rule ships with a safe fixture proving it stays quiet.
+every rule ships with a safe fixture proving it stays quiet. Participation is
+governed by the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+Changes are recorded in [CHANGELOG.md](CHANGELOG.md), including any change that
+makes a rule report *less* - a scanner that goes quiet without saying so is
+worse than one that never ran.
 
 ## Security
 

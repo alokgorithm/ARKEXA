@@ -86,3 +86,15 @@ at first, because they are already half solved.
 Do not open a public issue for a vulnerability in ARKEXA, and do not post a
 finding from someone else's repository anywhere public. Both are covered by
 [SECURITY.md](SECURITY.md), which is binding on this project.
+
+## Code of Conduct
+
+Participation is governed by the [Code of Conduct](CODE_OF_CONDUCT.md). It
+carries two project-specific rules alongside the usual ones: no findings from
+other people's repositories, and no working injection payloads.
+
+## Releases
+
+User-visible changes go in [CHANGELOG.md](CHANGELOG.md) under `Unreleased`, in
+the same pull request that makes them. A change that makes a rule report less
+must be called out there explicitly.
