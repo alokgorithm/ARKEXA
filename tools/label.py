@@ -94,6 +94,25 @@ def save(path: Path, data: dict) -> None:
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8", newline="\n")
 
 
+def source_repos(corpus: Path) -> dict[str, str]:
+    """Id to repository slug, used only to refuse it in a rationale.
+
+    Read and never displayed. A workflow that runs its own action would
+    otherwise have its source waved through by the `uses:` exemption.
+    """
+    for name in ("sources-private.json", "sources.json"):
+        source = corpus / name
+        if source.is_file():
+            entries = json.loads(source.read_text(encoding="utf-8"))
+            if isinstance(entries, dict):
+                entries = entries.get("workflows", [])
+            return {
+                e["id"]: str(e.get("repo", "")).lower()
+                for e in entries if "id" in e and e.get("repo")
+            }
+    return {}
+
+
 def shas(corpus: Path) -> dict[str, str]:
     """Commit SHAs by id, so the corpus stays reproducible. Repo names stay put."""
     for name in ("sources-private.json", "sources.json"):
@@ -168,15 +187,41 @@ def digest(text: str) -> list[str]:
 
 _URL = re.compile(r"https?://|\bwww\.|\bgithub\.com\b", re.IGNORECASE)
 _SHA = re.compile(r"\b[0-9a-f]{40}\b", re.IGNORECASE)
-_SLUG = re.compile(r"\b[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}\b")
+# A GitHub owner is lowercase alphanumeric with hyphens; a repository name adds
+# dots and underscores. Prose with a slash in it nearly always breaks one of
+# those rules - an uppercase letter as in `PR/issue`, a file extension as in a
+# script path - or puts an ordinary English word on one side of the slash.
+# Requiring repository *shape* is what the old stoplist should have been doing:
+# enumerating English was never going to keep up with how people write.
+_SLUG = re.compile(
+    r"(?<![\w./-])([a-z0-9][a-z0-9-]{0,38})/([a-z0-9][a-z0-9._-]{0,99})(?![\w/])"
+)
 _USES = re.compile(r"^\s*-?\s*uses:\s*[\"']?([A-Za-z0-9][\w.-]*/[\w.-]+)", re.MULTILINE)
+_FILE = re.compile(r"\.(py|ya?ml|sh|bash|js|ts|json|md|txt|toml|cfg|ini|lock)$", re.I)
 
-# A slash turns up in ordinary prose long before it means a repository.
-# "read/write scopes" is a description, not a source.
+# Words that turn up beside a slash in a description of a workflow. One of
+# these on *either* side means the pair is prose - the old rule needed both,
+# which is why `comment/review` and `github/actions` were rejected.
 _PROSE = {
-    "read", "write", "and", "or", "on", "off", "true", "false", "yes", "no",
-    "input", "output", "issues", "pull", "push", "in", "out", "either",
+    "a", "and", "or", "on", "off", "in", "out", "either", "both", "the",
+    "read", "write", "readonly", "yes", "no", "true", "false", "none",
+    "issue", "issues", "pr", "prs", "pull", "push", "comment", "comments",
+    "review", "reviews", "body", "title", "commit", "commits", "branch",
+    "model", "models", "ai", "llm", "agent", "agents", "prompt", "prompts",
+    "input", "inputs", "output", "outputs", "env", "secret", "secrets",
+    "token", "tokens", "scope", "scopes", "permission", "permissions",
+    "action", "actions", "workflow", "workflows", "job", "jobs", "step", "steps",
+    "user", "users", "account", "accounts", "author", "owner", "member",
+    "config", "configs", "file", "files", "path", "paths", "text", "code",
+    "context", "content", "data", "value", "values", "name", "names",
+    "event", "events", "trigger", "triggers", "run", "runs", "checkout",
 }
+
+
+def _is_prose(token: str) -> bool:
+    """A word, or a hyphenated compound of words, rather than a name."""
+    parts = [part for part in token.replace("_", "-").split("-") if part]
+    return bool(parts) and all(part in _PROSE for part in parts)
 
 
 def action_slugs(text: str) -> set[str]:
@@ -189,33 +234,45 @@ def action_slugs(text: str) -> set[str]:
     return {match.group(1).split("@")[0].lower() for match in _USES.finditer(text)}
 
 
-def identifying(rationale: str, allowed: set[str]) -> str | None:
-    """What in this rationale names the source rather than the structure."""
+def identifying(rationale: str, allowed: set[str], forbidden: set[str] = frozenset()):
+    """What in this rationale names the source rather than the structure.
+
+    Returns (what, echoable). `echoable` is False when naming the thing back to
+    the labeller would itself disclose the source, which is the case for the
+    repository the workflow was taken from.
+    """
     if _URL.search(rationale):
-        return "a URL"
+        return "a URL", True
     if _SHA.search(rationale):
-        return "a commit sha"
+        return "a commit sha", True
+
     for match in _SLUG.finditer(rationale):
-        slug = match.group(0)
-        owner, _, repo = slug.partition("/")
-        if owner.lower() in _PROSE and repo.lower() in _PROSE:
+        slug, owner, repo = match.group(0), match.group(1), match.group(2)
+        # The source repository is refused even when the workflow `uses:` it,
+        # which happens when a project runs its own action. Never echoed back.
+        if slug in forbidden:
+            return "the repository this workflow came from", False
+        if _is_prose(owner) or _is_prose(repo):
             continue
-        if slug.lower() in allowed:
+        if _FILE.search(repo):
             continue
-        return f"'{slug}'"
-    return None
+        if slug in allowed:
+            continue
+        return f"'{slug}'", True
+    return None, True
 
 
-def rationale_check(text: str):
+def rationale_check(text: str, forbidden: set[str] = frozenset()):
     """A validator for one workflow's rationales, closed over what it may name."""
     allowed = action_slugs(text)
 
     def check(answer: str) -> str | None:
-        found = identifying(answer, allowed)
+        found, echoable = identifying(answer, allowed, forbidden)
         if found is None:
             return None
+        named = found if echoable else "the source repository"
         return (
-            f"  That names the source, not the structure: {found}.\n"
+            f"  That names the source, not the structure: {named}.\n"
             "  Say what the workflow does - the trigger, the scopes, the path\n"
             "  from the event to the prompt. The id-to-source mapping lives in\n"
             "  sources-private.json and does not belong in a label."
@@ -250,7 +307,7 @@ def ask_required(prompt: str, check=None) -> str | None:
         print(problem)
 
 
-def judge(entry_id: str, text: str, position: str) -> dict | None:
+def judge(entry_id: str, text: str, position: str, forbidden=frozenset()) -> dict | None:
     """Present one workflow and return the verdict.
 
     Deliberately takes the file text and nothing else. It is not given the
@@ -268,7 +325,7 @@ def judge(entry_id: str, text: str, position: str) -> dict | None:
         print(line)
     print("-" * 78)
 
-    check = rationale_check(text)
+    check = rationale_check(text, forbidden)
 
     while True:
         verdict = ask("verdict  [v]ulnerable  [c]lean  e[x]clude  [s]kip  [q]uit: ").lower()
@@ -369,6 +426,7 @@ def main(argv: list[str] | None = None) -> int:
     data.setdefault("superseded", [])
     by_id = {e["id"]: e for e in data["workflows"] if "id" in e}
     sha_of = shas(corpus)
+    repo_of = source_repos(corpus)
 
     files = sorted((corpus / "workflows").glob("*.y*ml"))
     restricted_to = ""
@@ -425,7 +483,12 @@ def main(argv: list[str] | None = None) -> int:
             break
         entry_id = path.stem
         position = f"{index} of {len(todo)} in this run, {mine + written} done overall"
-        answer = judge(entry_id, path.read_text(encoding="utf-8", errors="replace"), position)
+        answer = judge(
+            entry_id,
+            path.read_text(encoding="utf-8", errors="replace"),
+            position,
+            {repo_of[entry_id]} if entry_id in repo_of else frozenset(),
+        )
         if answer is None:
             continue
         if answer.get("__quit__"):

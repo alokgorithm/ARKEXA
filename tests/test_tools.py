@@ -209,6 +209,49 @@ class RationaleGuardTest(unittest.TestCase):
     def check(self, answer):
         return label.rationale_check(self.WORKFLOW)(answer)
 
+    # Every one of these was rejected by the stoplist version while a labelling
+    # run was in progress. A checker that refuses ordinary prose costs more than
+    # it saves: it pushes the labeller into rewording a rationale until it
+    # passes, which is a rationale shaped by the tool rather than the workflow.
+    PROSE_THAT_MUST_PASS = [
+        "PR/issue",
+        "AI/model",
+        "comment/review",
+        "comment/PR-controlled",
+        "PR-body/commit",
+        "github/actions",
+        "scripts/triage.py",
+        ".github/workflows/claude.yml",
+        "read/write",
+        "and/or",
+    ]
+
+    def test_ordinary_prose_with_a_slash_is_not_a_repository(self):
+        for phrase in self.PROSE_THAT_MUST_PASS:
+            with self.subTest(phrase=phrase):
+                self.assertIsNone(
+                    self.check(f"the {phrase} content reaches the prompt"),
+                    f"{phrase!r} is prose and must not be read as a repository",
+                )
+
+    def test_a_real_slug_is_still_refused(self):
+        for slug in ("acme/widgets", "grafana/auto-triager", "octo-org/some-tool"):
+            with self.subTest(slug=slug):
+                self.assertIsNotNone(self.check(f"{slug} is wide open"))
+
+    def test_the_source_repository_is_refused_even_when_the_workflow_uses_it(self):
+        """A project running its own action would slip past the uses: exemption."""
+        workflow = "jobs:\n  a:\n    steps:\n      - uses: acme/triager@main\n"
+        check = label.rationale_check(workflow, {"acme/triager"})
+        self.assertIsNotNone(check("acme/triager receives the issue body"))
+
+    def test_that_refusal_does_not_echo_the_repository_back(self):
+        """Naming it in the error would disclose exactly what is being protected."""
+        workflow = "jobs:\n  a:\n    steps:\n      - uses: acme/triager@main\n"
+        message = label.rationale_check(workflow, {"acme/triager"})("acme/triager runs it")
+        self.assertNotIn("acme", message)
+        self.assertIn("source repository", message)
+
     def test_a_url_is_refused(self):
         self.assertIn("a URL", self.check("see https://github.com/acme/widgets"))
 
