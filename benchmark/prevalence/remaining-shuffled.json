@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "corpus": "prevalence",
+  "note": "The unlabelled remainder of sample-50.json, in shuffled order. Ids were assigned in collection order and collection runs query by query, so labelling in id order stratifies by agent tool - stopping early leaves whole classes of workflow absent rather than under-sampled. Shuffling makes any stopping point a random sample of the remainder instead. Published so the order is checkable.",
+  "seed": 20260901,
+  "method": "random.Random(seed).shuffle(remaining)",
+  "python": "3.13",
+  "size": 20,
+  "drawn": [
+    "wf-097",
+    "wf-076",
+    "wf-075",
+    "wf-066",
+    "wf-098",
+    "wf-080",
+    "wf-082",
+    "wf-062",
+    "wf-070",
+    "wf-088",
+    "wf-073",
+    "wf-065",
+    "wf-087",
+    "wf-072",
+    "wf-092",
+    "wf-096",
+    "wf-077",
+    "wf-094",
+    "wf-059",
+    "wf-089"
+  ]
+}

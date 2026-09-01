@@ -369,7 +369,7 @@ def judge(entry_id: str, text: str, position: str, forbidden=frozenset()) -> dic
         print("  Answer v, c, x, s or q.")
 
 
-def drawn_ids(path: Path) -> set[str]:
+def drawn_ids(path: Path) -> list[str]:
     """Ids from a draw file, so a sample is labelled without skipping by hand.
 
     Pressing `s` fifty times through workflows that are not in the sample is a
@@ -390,10 +390,11 @@ def drawn_ids(path: Path) -> set[str]:
     if not isinstance(data, list):
         sys.exit(f"{path} holds no list of ids (expected a 'drawn' list)")
 
-    ids = {
-        str(item["id"]) if isinstance(item, dict) and "id" in item else str(item)
-        for item in data
-    }
+    ids: list[str] = []
+    for item in data:
+        entry = str(item["id"]) if isinstance(item, dict) and "id" in item else str(item)
+        if entry not in ids:
+            ids.append(entry)
     if not ids:
         sys.exit(f"{path} lists no ids")
     return ids
@@ -433,9 +434,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.only:
         given = Path(args.only)
         wanted = drawn_ids(given if given.is_absolute() else ROOT / given)
-        present = {f.stem for f in files}
-        missing = sorted(wanted - present)
-        files = [f for f in files if f.stem in wanted]
+        by_stem = {f.stem: f for f in files}
+        missing = [i for i in wanted if i not in by_stem]
+        # The draw's own order is kept, not id order. When a draw is
+        # shuffled, that makes any stopping point a random sample of it;
+        # id order would instead sort by collection order, which tracks
+        # the search queries and so stratifies by agent tool.
+        files = [by_stem[i] for i in wanted if i in by_stem]
         restricted_to = f"{given} ({len(wanted)} ids)"
         if missing:
             print(f"warning    {len(missing)} id(s) in the draw are not in this "

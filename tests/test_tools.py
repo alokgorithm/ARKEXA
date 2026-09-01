@@ -768,6 +768,22 @@ class SessionTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             self.session("q", extra=("--only", str(path)))
 
+    def test_the_draw_order_is_kept_not_id_order(self):
+        """A shuffled draw makes any stopping point a random sample of it.
+
+        Ids track collection order, which runs query by query, so labelling in
+        id order stratifies the sample by agent tool: stop early and whole
+        classes of workflow are missing rather than merely under-sampled.
+        """
+        data, _ = self.session(
+            "c", "second file first",
+            "c", "first file second",
+            extra=("--only", self.draw("wf-002", "wf-001")),
+        )
+        rationales = {e["id"]: e["rationale"] for e in data["workflows"]}
+        self.assertEqual(rationales["wf-002"], "second file first")
+        self.assertEqual(rationales["wf-001"], "first file second")
+
     def test_progress_counts_only_what_the_draw_covers(self):
         """A label outside the draw is not progress through the draw."""
         self.session("c", "read-only scopes", "q")          # labels wf-001
