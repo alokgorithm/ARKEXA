@@ -102,7 +102,9 @@ Rules for labelling:
 - **Label before running any scanner.** Reading a tool's output first
   contaminates the label and inflates that tool's score.
 - **Every `vulnerable` label needs a written exploit path** in `rationale`. If
-  you cannot describe how an outsider triggers it, it is not vulnerable.
+  you cannot describe how an outsider triggers it, it is not vulnerable — and
+  the path has to end somewhere, not merely reach the prompt. See standard 4
+  below: name the scope or credential, and what the attacker gains.
 - **Every `clean` label needs the reason it is safe** — the guard, the trigger,
   the missing write scope.
 - **Ambiguous cases are excluded**, not guessed. Record them in
@@ -186,6 +188,51 @@ Every exclusion carries a written reason, in the entry. "Unclear" is not a
 reason; what could not be established is. Excluding is a legitimate answer and
 costs one observation, whereas a guess that lands in the denominator costs the
 credibility of the whole figure.
+
+**4. Reaching a prompt is not a finding.** *Decided 2026-09-02, AS.*
+
+Untrusted text reaching a model prompt is the first half of a path, not the
+whole of one. A `vulnerable` label additionally requires that **the job holds a
+scope or credential the agent can act with** — a repository write scope, a
+token minted to stand in for one, or a credential the agent can spend — and the
+rationale must **name what the attacker gains** by it.
+
+A workflow where attacker-controlled text reaches a model whose output nobody
+acts on is a `clean` entry with an interesting shape. Recording it as
+`vulnerable` would mean the corpus rewards a scanner for reporting every
+workflow that mentions an LLM, which is the precise failure this project exists
+to argue against. Reachability without capability is not an exploit path; it is
+half of one, and the half that is easy to find.
+
+So a rationale that ends "…is passed to the agent as model input" is not
+finished. It has to continue: with which scope, held by which job, letting the
+attacker do what.
+
+**Recalibration.** 17 entries were labelled before this standard was written,
+under the looser reading in which reaching the prompt was sufficient. They are
+being re-labelled against it.
+
+That is recorded here deliberately. A standard applied retroactively without
+saying so is indistinguishable from adjusting labels until the numbers look
+right: the verdicts move, the file shows nothing, and no figure resting on them
+can be defended afterwards. Re-labelling is blind, as every pass is — the tool
+does not show a verdict already on file — and the superseded entries are kept
+in `superseded` in the labels file rather than overwritten, so both readings
+stay inspectable. The prevalence figure will move as a result, and it is
+supposed to.
+
+### Entries outside the drawn sample
+
+Every published figure is computed over the **drawn sample only**
+(`benchmark/prevalence/sample-50.json`), and `tools/score.py --sample` enforces
+that rather than leaving it to be remembered.
+
+`wf-001` is labelled but sits outside the draw, and was judged before
+standard 4 was written. It is therefore **excluded from every number** —
+prevalence, precision and recall alike. It is kept in the labels file because
+deleting a label to make a denominator tidy is the habit this methodology
+exists to prevent, but it is not evidence for any published claim and must not
+be counted back in.
 
 ### Labels set aside
 

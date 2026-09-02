@@ -33,6 +33,7 @@ about the tool.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import hashlib
 import json
 import math
@@ -107,6 +108,25 @@ def load_corpus(directory: Path) -> Corpus:
         enriched=bool(data["enriched"]),
         entries=list(data.get("workflows", [])),
         declared_duplicates=[list(c) for c in data.get("normalised_duplicates", [])],
+    )
+
+
+def restrict(corpus: Corpus, sample: Path) -> Corpus:
+    """Keep only the entries in a published draw.
+
+    Entries outside the draw are not part of the sample and must not reach
+    any figure - including one labelled before a standard that the drawn
+    entries were judged under.
+    """
+    data = json.loads(sample.read_text(encoding="utf-8"))
+    ids = data.get("drawn", data) if isinstance(data, dict) else data
+    wanted = {str(i) for i in ids}
+    return Corpus(
+        root=corpus.root,
+        kind=corpus.kind,
+        enriched=corpus.enriched,
+        entries=[e for e in corpus.entries if e.get("id") in wanted],
+        declared_duplicates=corpus.declared_duplicates,
     )
 
 
@@ -250,7 +270,9 @@ class Score:
     false_negatives: int = 0
     true_negatives: int = 0
     total_findings: int = 0
+    demoted: int = 0            # vulnerable, but not externally reachable
     skipped: bool = False
+    unavailable: str = ""      # why this tool has no row of numbers
 
     @property
     def precision(self) -> float | None:
@@ -266,13 +288,14 @@ class Score:
         def percent(value: float | None) -> str:
             return "-" if value is None else f"{value * 100:.0f}%"
 
-        if self.skipped:
-            return f"| {self.tool} | not installed | | | | | | |"
+        if self.skipped or self.unavailable:
+            reason = self.unavailable or "not installed"
+            return f"| {self.tool} | unavailable | - | - | - | - | - | - | - |"
         return (
             f"| {self.tool} | {self.version} | {percent(self.precision)} | "
             f"{percent(self.recall)} | {self.true_positives} | "
             f"{self.false_positives} | {self.false_negatives} | "
-            f"{self.total_findings} |"
+            f"{self.demoted} | {self.total_findings} |"
         )
 
 
@@ -294,7 +317,11 @@ def tool_version(tool: str) -> str:
         )
     except (OSError, subprocess.SubprocessError):
         return "unknown"
-    return (finished.stdout or finished.stderr or "unknown").strip().splitlines()[0]
+    reported = (finished.stdout or finished.stderr or "unknown").strip().splitlines()[0]
+    # Tools print their own name back ("zizmor 1.30.0"); the column already
+    # says which tool it is.
+    prefix = f"{tool} "
+    return reported[len(prefix):].strip() if reported.lower().startswith(prefix) else reported
 
 
 def count_arkexa(path: Path) -> int:
@@ -331,7 +358,19 @@ def count_external(tool: str, path: Path) -> int | None:
 
 
 def evaluate(corpus: Corpus, tool: str) -> Score:
-    """Precision and recall for one tool. Says nothing about prevalence."""
+    """Precision and recall for one tool. Says nothing about prevalence.
+
+    Positives are the **externally reachable** vulnerable entries, scored
+    against each tool's externally reachable findings. Comparing like with
+    like: a vulnerable entry only a contributor or maintainer can reach is
+    not something a default run is meant to report, so counting it as a miss
+    would penalise exactly the filtering the tool exists to do. Those entries
+    are reported separately as `demoted`, neither credited nor charged.
+
+    zizmor and poutine do not classify reachability, so every finding they
+    emit counts - the generous reading, and the one we would want applied to
+    us.
+    """
     version = arkexa_version() if tool == "arkexa" else tool_version(tool)
     result = Score(tool=tool, version=version)
     collapsed = collapsed_ids(corpus)
@@ -341,11 +380,22 @@ def evaluate(corpus: Corpus, tool: str) -> Score:
         path = corpus.root / "workflows" / f"{entry['id']}.yml"
         if not path.is_file():
             continue
+
+        vulnerable = entry.get("label") == "vulnerable"
+        external = entry.get("reachability") == "external"
+        if vulnerable and not external:
+            result.demoted += 1
+            continue
+
         count = count_arkexa(path) if tool == "arkexa" else count_external(tool, path)
         if count is None:
-            return Score(tool=tool, version=version, skipped=True)
+            return Score(
+                tool=tool,
+                version=version,
+                skipped=True,
+                unavailable=result.unavailable or "not installed",
+            )
         result.total_findings += count
-        vulnerable = entry.get("label") == "vulnerable"
         if vulnerable and count:
             result.true_positives += 1
         elif vulnerable:
@@ -357,44 +407,143 @@ def evaluate(corpus: Corpus, tool: str) -> Score:
     return result
 
 
-def evaluation_report(corpus: Corpus, scores: list[Score]) -> str:
-    vulnerable = sum(1 for e in corpus.judgeable if e["label"] == "vulnerable")
-    clean = len(corpus.judgeable) - vulnerable
+def workflows_without_agent_step(corpus: Corpus) -> list[str]:
+    """Entries in which no step matches the known agent inventory.
+
+    Determined with ARKEXA's own list (`data/agents.yml`), which is a stated
+    limitation: a workflow driving a model through something the inventory does
+    not know would be counted here wrongly. Reported because it changes what
+    the prevalence denominator means - these are workflows from repositories
+    that use agent tooling somewhere, not workflows that themselves run an
+    agent.
+    """
+    from arkexa import detect, model
+
+    quiet = []
+    for entry in corpus.entries:
+        path = corpus.root / "workflows" / f"{entry['id']}.yml"
+        if not path.is_file():
+            continue
+        try:
+            workflow = model.build(path, path.read_text(encoding="utf-8", errors="replace"))
+        except Exception:
+            continue
+        if not any(detect.agents_in_job(job) for job in workflow.jobs.values()):
+            quiet.append(entry["id"])
+    return quiet
+
+
+def evaluation_report(corpus: Corpus, scores: list[Score], when: str) -> str:
+    positives = [
+        e for e in corpus.judgeable
+        if e["label"] == "vulnerable" and e.get("reachability") == "external"
+    ]
+    demoted = [
+        e for e in corpus.judgeable
+        if e["label"] == "vulnerable" and e.get("reachability") != "external"
+    ]
+    clean = [e for e in corpus.judgeable if e["label"] == "clean"]
     enriched = (
-        "This corpus is **enriched** with vulnerable-skewed candidates. It "
+        "**This corpus is enriched** with vulnerable-skewed candidates. It "
         "measures precision and recall only, and says nothing about how common "
-        "any of this is in the wild - see the prevalence corpus for that."
-        if corpus.enriched
-        else "This corpus is not enriched."
+        "any of this is - see the prevalence figure, which is computed from a "
+        "different corpus and never from this one."
+        if corpus.enriched else
+        "This corpus is **not enriched**. Recall is therefore measured against "
+        "however many positives the unbiased sweep happened to contain, which "
+        "is a smaller number than a purpose-built evaluation corpus would give."
     )
-    return "\n".join([
-        "# Evaluation results",
+    lines = [
+        "# Evaluation: precision and recall",
         "",
-        f"Corpus: {len(corpus.judgeable)} judgeable workflows "
-        f"({vulnerable} vulnerable, {clean} clean), {len(corpus.excluded)} excluded.",
+        f"Run {when}.",
         "",
         enriched,
         "",
-        "| tool | version | precision | recall | TP | FP | FN | total findings |",
-        "|---|---|---|---|---|---|---|---|",
+        "## Scoring basis",
+        "",
+        "Positives are the **externally reachable** vulnerable entries "
+        f"({len(positives)}), scored against each tool's externally reachable "
+        f"findings. Negatives are the clean entries ({len(clean)}).",
+        "",
+        f"The {len(demoted)} vulnerable entries reachable only by a contributor "
+        "or maintainer are reported as **demoted**: neither credited nor "
+        "charged. A default run is not meant to report them, so counting them "
+        "as misses would penalise the filtering the tool exists to do.",
+        "",
+        "zizmor and poutine do not classify reachability, so every finding they "
+        "emit counts. That is the generous reading, and the one we would want "
+        "applied to us.",
+        "",
+        "**Total findings** is reported beside precision on purpose. A scanner "
+        "that emits two hundred findings to catch twelve real ones is a "
+        "different proposition from one that emits fourteen, and precision "
+        "alone does not show it.",
+        "",
+        "| tool | version | precision | recall | TP | FP | FN | demoted | total findings |",
+        "|---|---|---|---|---|---|---|---|---|",
         *(score.row() for score in scores),
         "",
-    ])
+    ]
+    unavailable = [s for s in scores if s.skipped or s.unavailable]
+    if unavailable:
+        lines.append("### Tools that could not be run")
+        lines.append("")
+        for score in unavailable:
+            lines.append(f"- **{score.tool}** - {score.unavailable}")
+        lines.append("")
+        lines.append(
+            "Their rows are kept rather than dropped: a comparison missing a "
+            "tool is a different claim from a comparison that tool lost."
+        )
+        lines.append("")
+    return "\n".join(lines)
 
 
-def prevalence_report(corpus: Corpus, result: Prevalence) -> str:
+def prevalence_report(corpus: Corpus, result: Prevalence, when: str, quiet: list[str]) -> str:
     return "\n".join([
-        "# Prevalence",
+        "# Prevalence: how often an outsider can reach an agent",
         "",
-        "Share of agentic workflows containing at least one externally "
-        "reachable path from attacker-controlled text to a privileged agent "
-        "action, from the hand labels alone.",
+        f"Run {when}.",
+        "",
+        "## The figure",
         "",
         f"**{result.describe()}**",
         "",
-        "This corpus is collected by query and never enriched, which is what "
-        "makes the proportion a statement about agentic workflows rather than "
-        "about the collection. It is not used to measure precision or recall.",
+        "Share of workflows containing at least one externally reachable path "
+        "from attacker-controlled text to a privileged agent action, taken "
+        "from the hand labels alone. No scanner was run to produce it: it is a "
+        "claim about workflows, and measuring it with ARKEXA would make it a "
+        "claim about ARKEXA.",
+        "",
+        "## What the denominator means",
+        "",
+        "The corpus is **unenriched** - every workflow the collection queries "
+        "returned was kept, whatever it turned out to contain. Nothing was "
+        "added because it looked interesting or dropped because it looked "
+        "dull, which is what makes the proportion a statement about the "
+        "population rather than about the collector.",
+        "",
+        "The population is **workflows in repositories that use agent "
+        "tooling**, found by searching for known agent actions and inference "
+        "endpoints. It is not all GitHub workflows, and the figure must not be "
+        "quoted as though it were.",
+        "",
+        f"Of the sampled workflows, **{len(quiet)} contain no agent step at "
+        "all** by ARKEXA's inventory - they came from repositories that use "
+        "agent tooling elsewhere. They remain in the denominator, because "
+        "removing them would silently narrow the population to workflows "
+        "already known to run an agent and inflate the proportion.",
+        "",
+        "## Interval",
+        "",
+        "Wilson rather than the normal approximation: at this sample size and "
+        "proportion the textbook interval runs off the end of the scale. The "
+        "count, the denominator and the interval are always reported together "
+        "- a percentage published without its denominator gets quoted without "
+        "it.",
+        "",
+        "This corpus is never used to measure precision or recall.",
         "",
     ])
 
@@ -415,26 +564,42 @@ def main(argv: list[str] | None = None) -> int:
 
     one = sub.add_parser(PREVALENCE, help="how common this is, from the labels")
     one.add_argument("--corpus")
+    one.add_argument("--sample", help="restrict to the ids in a published draw")
+    one.add_argument("--out", help="write the report here instead of the corpus")
     one.add_argument("--write", action="store_true")
 
     two = sub.add_parser(EVALUATION, help="precision and recall, per tool")
     two.add_argument("--corpus")
+    two.add_argument("--sample", help="restrict to the ids in a published draw")
+    two.add_argument("--out", help="write the report here instead of the corpus")
     two.add_argument("--with", dest="others", action="append", default=[])
+    two.add_argument("--unavailable", action="append", default=[],
+                     help="tool=reason for a scanner that could not be run")
     two.add_argument("--write", action="store_true")
 
     args = parser.parse_args(argv)
     directory = Path(args.corpus) if args.corpus else default_corpus(args.command)
+    when = dt.date.today().isoformat()
 
     try:
         corpus = load_corpus(directory)
+        if args.sample:
+            corpus = restrict(corpus, Path(args.sample))
         if args.command == PREVALENCE:
-            text = prevalence_report(corpus, prevalence(corpus))
-            out = directory / "prevalence.md"
+            text = prevalence_report(
+                corpus, prevalence(corpus), when, workflows_without_agent_step(corpus)
+            )
+            out = directory / "results.md"
         else:
             scores = [evaluate(corpus, "arkexa")]
             scores += [evaluate(corpus, name) for name in args.others]
-            text = evaluation_report(corpus, scores)
+            for item in args.unavailable:
+                tool, _, reason = item.partition("=")
+                scores.append(Score(tool=tool, unavailable=reason or "not installed"))
+            text = evaluation_report(corpus, scores, when)
             out = directory / "results.md"
+        if args.out:
+            out = Path(args.out)
     except CorpusError as error:
         print(f"score: {error}", file=sys.stderr)
         return 2

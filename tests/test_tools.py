@@ -196,9 +196,23 @@ class LabellingPolicyTest(unittest.TestCase):
         for _, who in decided:
             self.assertTrue(who.isalpha())
 
-    def test_all_three_decisions_are_numbered_and_present(self):
-        for number in ("**1.", "**2.", "**3."):
+    def test_every_decision_is_numbered_and_present(self):
+        for number in ("**1.", "**2.", "**3.", "**4."):
             self.assertIn(number, self.policy, f"policy decision {number} is missing")
+
+    def test_the_capability_standard_is_recorded(self):
+        self.assertIn("Reaching a prompt is not a finding", self.policy)
+        self.assertIn("scope or credential the agent can act with", self.policy)
+        self.assertIn("name what the attacker gains", self.policy)
+        self.assertRegex(
+            self.policy, r"Reaching a prompt is not a finding.*?\*Decided \d{4}-\d{2}-\d{2}"
+        )
+
+    def test_the_recalibration_is_declared_not_silent(self):
+        """Retroactive standards are only defensible if the file says so."""
+        self.assertIn("Recalibration", self.policy)
+        self.assertIn("re-labelled", self.policy)
+        self.assertIn("superseded", self.policy)
 
 
 class RationaleGuardTest(unittest.TestCase):

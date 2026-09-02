@@ -157,9 +157,12 @@ class PrevalenceTest(unittest.TestCase):
         self.assertIn("no prevalence figure", result.describe())
 
     def test_the_report_carries_the_interval_not_just_the_ratio(self):
-        text = score.prevalence_report(self.corpus, score.prevalence(self.corpus))
+        text = score.prevalence_report(
+            self.corpus, score.prevalence(self.corpus), "2026-09-02", []
+        )
         self.assertIn("Wilson 95% CI", text)
-        self.assertIn("never enriched", text)
+        self.assertIn("unenriched", text)
+        self.assertIn("no agent step", text)
 
 
 class WilsonTest(unittest.TestCase):
@@ -205,13 +208,13 @@ class EvaluationTest(unittest.TestCase):
         ))
 
     def test_the_report_says_it_is_enriched_and_disclaims_prevalence(self):
-        text = score.evaluation_report(self.corpus, [score.Score(tool="arkexa")])
+        text = score.evaluation_report(self.corpus, [score.Score(tool="arkexa")], "2026-09-02")
         self.assertIn("enriched", text)
         self.assertIn("nothing about", text)
 
     def test_the_report_pins_the_tool_version(self):
         scored = score.Score(tool="zizmor", version="1.2.3", true_positives=1)
-        self.assertIn("1.2.3", score.evaluation_report(self.corpus, [scored]))
+        self.assertIn("1.2.3", score.evaluation_report(self.corpus, [scored], "2026-09-02"))
 
     def test_precision_and_recall_are_none_rather_than_zero_when_undefined(self):
         blank = score.Score(tool="arkexa")
