@@ -1,0 +1,121 @@
+name: 'ARKEXA'
+description: 'Find the prompt injections in your CI that an outsider can actually reach.'
+author: 'alokgorithm'
+
+branding:
+  icon: 'shield'
+  color: 'purple'
+
+inputs:
+  path:
+    description: 'File or directory to scan. Defaults to the whole repository.'
+    required: false
+    default: '.'
+  reachability:
+    description: >-
+      Lowest reachability to report: external, contributor, maintainer, or all.
+      The default reports only what an outsider can reach, which is the point
+      of the tool.
+    required: false
+    default: 'external'
+  severity:
+    description: 'Fail at this severity or above: critical, high, medium, low.'
+    required: false
+    default: 'critical'
+  sarif-file:
+    description: 'Where to write the SARIF report.'
+    required: false
+    default: 'arkexa.sarif'
+  upload:
+    description: >-
+      Upload the SARIF to GitHub code scanning. Needs security-events: write,
+      and is silently unavailable on private repositories without Advanced
+      Security - set false there and keep the artifact instead.
+    required: false
+    default: 'true'
+  fail-on-findings:
+    description: 'Fail the step when something at or above `severity` is reported.'
+    required: false
+    default: 'true'
+  version:
+    description: >-
+      Version specifier to install, e.g. `0.1.0a1`. Defaults to the copy of
+      ARKEXA shipped with the ref of this action you pinned, which is what
+      makes a pinned action reproducible.
+    required: false
+    default: ''
+  python-version:
+    description: 'Python used to run ARKEXA.'
+    required: false
+    default: '3.12'
+
+outputs:
+  sarif-file:
+    description: 'Path to the SARIF report that was written.'
+    value: ${{ steps.scan.outputs.sarif-file }}
+  findings:
+    description: 'Number of findings reported at the chosen reachability.'
+    value: ${{ steps.scan.outputs.findings }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 'Set up Python'
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.3.0
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: 'Install ARKEXA'
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        if [ -n "$VERSION" ]; then
+          python -m pip install --quiet "arkexa==${VERSION}"
+        else
+          # The action's own checkout, so the pinned SHA determines the
+          # scanner version as well as the wrapper.
+          python -m pip install --quiet "$ACTION_PATH"
+        fi
+        arkexa --version
+
+    - name: 'Scan'
+      id: scan
+      shell: bash
+      env:
+        TARGET: ${{ inputs.path }}
+        REACHABILITY: ${{ inputs.reachability }}
+        SEVERITY: ${{ inputs.severity }}
+        SARIF_FILE: ${{ inputs.sarif-file }}
+      run: |
+        set -uo pipefail
+        # Findings are a non-zero exit. Capture it rather than letting the
+        # step die here, so the SARIF still uploads and the annotations
+        # still appear - then fail at the end if asked to.
+        arkexa "$TARGET" --reachability "$REACHABILITY" --severity "$SEVERITY" || true
+        arkexa "$TARGET" \
+          --reachability "$REACHABILITY" \
+          --severity "$SEVERITY" \
+          --format sarif > "$SARIF_FILE"
+        status=$?
+        count=$(python -c "import json,sys; print(len(json.load(open(sys.argv[1]))['runs'][0]['results']))" "$SARIF_FILE")
+        echo "sarif-file=$SARIF_FILE" >> "$GITHUB_OUTPUT"
+        echo "findings=$count" >> "$GITHUB_OUTPUT"
+        echo "status=$status" >> "$GITHUB_OUTPUT"
+        echo "ARKEXA reported $count finding(s) at reachability '$REACHABILITY'." >> "$GITHUB_STEP_SUMMARY"
+
+    - name: 'Upload SARIF to code scanning'
+      if: ${{ inputs.upload == 'true' }}
+      uses: github/codeql-action/upload-sarif@6f5948dfacef28e207b48d0905cf90c03365536d # v3.29.0
+      with:
+        sarif_file: ${{ steps.scan.outputs.sarif-file }}
+        category: 'arkexa'
+
+    - name: 'Fail if findings were reported'
+      if: ${{ inputs.fail-on-findings == 'true' && steps.scan.outputs.findings != '0' }}
+      shell: bash
+      run: |
+        echo "::error::ARKEXA reported ${{ steps.scan.outputs.findings }} finding(s). See the Security tab, or run 'arkexa .' locally."
+        exit 1

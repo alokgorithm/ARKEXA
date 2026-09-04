@@ -46,7 +46,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="lowest reachability to report (default: external)",
     )
     parser.add_argument(
-        "--format", choices=["text", "json"], default="text", help="output format"
+        "--format",
+        choices=["text", "json", "sarif"],
+        default="text",
+        help="output format; sarif uploads to GitHub code scanning",
     )
     parser.add_argument(
         "--only", metavar="IDS", help="comma-separated rule ids, e.g. ARK001,ARK002"
@@ -133,6 +136,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.format == "json":
         render.render_json(result, out)
+    elif args.format == "sarif":
+        render.render_sarif(result, out, show_all=show_all)
     else:
         render.render_text(result, out, show_all=show_all)
 

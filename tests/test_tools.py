@@ -238,6 +238,8 @@ class RationaleGuardTest(unittest.TestCase):
         ".github/workflows/claude.yml",
         "read/write",
         "and/or",
+        "build/deployment",
+        "migrations/seeding",
     ]
 
     def test_ordinary_prose_with_a_slash_is_not_a_repository(self):
@@ -249,9 +251,19 @@ class RationaleGuardTest(unittest.TestCase):
                 )
 
     def test_a_real_slug_is_still_refused(self):
-        for slug in ("acme/widgets", "grafana/auto-triager", "octo-org/some-tool"):
+        for slug in ("grafana/auto-triager", "octo-org/some-tool", "acme/widgets-2"):
             with self.subTest(slug=slug):
                 self.assertIsNotNone(self.check(f"{slug} is wide open"))
+
+    def test_two_bare_words_are_prose_and_that_is_the_trade(self):
+        """`acme/widgets` is shaped exactly like `build/deployment`.
+
+        Shape cannot separate them, so this one is let through deliberately.
+        Naming an unrelated project is not a disclosure; naming the source of
+        the workflow being labelled is, and that is refused by exact lookup
+        rather than by guessing - see the source-repository tests below.
+        """
+        self.assertIsNone(self.check("acme/widgets is wide open"))
 
     def test_the_source_repository_is_refused_even_when_the_workflow_uses_it(self):
         """A project running its own action would slip past the uses: exemption."""
@@ -273,10 +285,12 @@ class RationaleGuardTest(unittest.TestCase):
         self.assertIn("a commit sha", self.check("taken at " + "9f" * 20))
 
     def test_a_foreign_repository_slug_is_refused(self):
-        self.assertIn("acme/widgets", self.check("the acme/widgets workflow is wide open"))
+        self.assertIn(
+            "acme-corp/widgets", self.check("the acme-corp/widgets workflow is wide open")
+        )
 
     def test_the_refusal_says_what_to_write_instead(self):
-        self.assertIn("structure", self.check("acme/widgets is wide open"))
+        self.assertIn("structure", self.check("acme-corp/widgets is wide open"))
 
     def test_an_action_the_workflow_uses_is_structural(self):
         """You cannot describe the workflow without naming the action it runs."""
@@ -284,8 +298,10 @@ class RationaleGuardTest(unittest.TestCase):
 
     def test_a_repository_that_only_mentions_itself_is_still_refused(self):
         """`github.repository == 'o/r'` is common, and is not a licence to name it."""
-        workflow = self.WORKFLOW + "    if: github.repository == 'acme/widgets'\n"
-        self.assertIsNotNone(label.rationale_check(workflow)("acme/widgets gates on itself"))
+        workflow = self.WORKFLOW + "    if: github.repository == 'acme-corp/widgets'\n"
+        self.assertIsNotNone(
+            label.rationale_check(workflow)("acme-corp/widgets gates on itself")
+        )
 
     def test_ordinary_prose_with_a_slash_is_fine(self):
         self.assertIsNone(self.check("read/write scopes are held by the job"))
@@ -294,7 +310,9 @@ class RationaleGuardTest(unittest.TestCase):
         self.assertIsNone(self.check("issue_comment reaches the prompt; job holds contents: write"))
 
     def test_the_prompt_refuses_and_asks_again(self):
-        scripted = Answers("c", "acme/widgets is wide open", "the job holds no write scope", "q")
+        scripted = Answers(
+            "c", "acme-corp/widgets is wide open", "the job holds no write scope", "q"
+        )
         captured = io.StringIO()
         with mock.patch.object(label, "ask", scripted), redirect_stdout(captured):
             verdict = label.judge("wf-001", self.WORKFLOW, "1 of 1")

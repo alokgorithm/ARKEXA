@@ -11,6 +11,29 @@ is worse than one that never ran.
 
 ## [Unreleased]
 
+### Added
+
+- **SARIF output** — `arkexa . --format sarif`. Uploads to GitHub code
+  scanning and appears as annotations in the Security tab. The exploit path is
+  carried as `relatedLocations` rather than flattened into the message, so the
+  chain from the attacker to the privileged action survives the trip.
+  `security-severity` is set on every rule, without which code scanning files
+  every alert under "unknown severity". Alerts carry a `partialFingerprint`
+  derived from the path rather than the line number, so editing a file above a
+  finding does not close and reopen the alert.
+- **A GitHub Action wrapper** — `uses: alokgorithm/ARKEXA@v0`, two lines plus
+  `security-events: write`. Installs and runs the scanner, writes SARIF,
+  uploads it, and fails the build only if you ask it to. Its own steps are
+  pinned to commit SHAs, which is advice this tool gives about other actions
+  and had better take. The pinned ref decides the scanner version as well as
+  the wrapper, so a pinned action is reproducible.
+- **First measured numbers**, in the README and in `benchmark/`. Prevalence:
+  18 of 49 hand-labelled workflows carry an externally reachable path, Wilson
+  95% CI 24.7-50.7%. Evaluation: ARKEXA at 67% precision and **11% recall** on
+  4 findings, against zizmor at 45% and 83% on 162. The recall figure is
+  published as prominently as the precision one. No rule was changed after
+  seeing it.
+
 ### Changed
 
 - **A fork pull request on `pull_request` no longer counts as an external

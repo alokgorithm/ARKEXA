@@ -157,15 +157,54 @@ the tool.
 
 ## In CI
 
+Three lines, and findings land in the Security tab as annotations:
+
 ```yaml
 permissions:
   contents: read
+  security-events: write   # so the SARIF can be uploaded
 
 jobs:
   arkexa:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: alokgorithm/ARKEXA@v0
+```
+
+Pin it to a commit SHA rather than a tag if you would rather a tag move not
+change what runs — which is advice this tool gives about other actions, so it
+had better take it:
+
+```yaml
+      - uses: alokgorithm/ARKEXA@<sha>  # v0.1.0a1
+```
+
+The pinned ref decides the scanner version as well as the wrapper, so a pinned
+action is reproducible. Useful inputs:
+
+| input | default | what it does |
+|---|---|---|
+| `path` | `.` | file or directory to scan |
+| `reachability` | `external` | `external`, `contributor`, `maintainer`, `all` |
+| `severity` | `critical` | fail at this severity or above |
+| `upload` | `true` | upload SARIF to code scanning |
+| `fail-on-findings` | `true` | set `false` to report without failing the build |
+
+`upload: true` needs `security-events: write`, and code scanning is
+unavailable on private repositories without Advanced Security — set it to
+`false` there and the SARIF is still written for you to keep as an artifact.
+
+The SARIF is also available on its own, for uploading yourself or feeding to
+something else:
+
+```bash
+arkexa . --format sarif > arkexa.sarif
+```
+
+Or without the action at all:
+
+```yaml
       - run: pipx install "arkexa==0.1.0a1"
       - run: arkexa .
 ```
@@ -192,15 +231,38 @@ Most contributions are one line in
 agent CLI isn't recognised, add its signature and open a pull request - no
 Python required.
 
-## Benchmark
+## Measured
 
-Nobody publishes precision numbers for CI scanners. [`benchmark/`](benchmark/)
-is where that gets fixed: a hand-labelled corpus of real agentic workflows,
-scored against ARKEXA, zizmor and poutine on identical inputs.
+Nobody publishes precision numbers for CI scanners. Here are ours, including
+the part that does not flatter us.
 
-It has not been collected yet, and [`results.md`](benchmark/results.md) says so
-rather than carrying numbers nobody measured. The method, and the disclosure
-rules that bind it, are in [METHODOLOGY.md](METHODOLOGY.md).
+**[Prevalence](benchmark/prevalence/results.md)** — of 49 judgeable workflows
+hand-labelled from a random draw of a 98-workflow unbiased sweep, **18 contain
+an externally reachable path** from attacker-controlled text to a privileged
+agent action: 36.7%, Wilson 95% CI 24.7–50.7%. Labelled by hand before any
+scanner was run.
+
+**[Evaluation](benchmark/evaluation/results.md)** — scored against the
+externally reachable vulnerable entries:
+
+| tool | precision | recall | total findings |
+|---|---|---|---|
+| ARKEXA 0.1.0a1 | 67% | **11%** | 4 |
+| zizmor 1.30.0 | 45% | 83% | 162 |
+| poutine | *unavailable — see results* | | |
+
+**Read that recall number.** ARKEXA finds 2 of the 18 externally reachable
+issues. zizmor finds 15. The precision case is real — ARKEXA is right more
+often and emits four findings where zizmor emits a hundred and sixty-two,
+which is the entire argument for reachability filtering — but it is currently
+made by a tool that misses most of what a human labeller called reachable.
+Recall is the priority for v0.2.
+
+No rule was changed after seeing these numbers. The labels are ground truth,
+and tuning against them would leave nothing worth publishing. The method, the
+labelling standards, and the disclosure rules that bind all of it are in
+[METHODOLOGY.md](METHODOLOGY.md); the corpus is two corpora, and
+[`benchmark/`](benchmark/) explains why.
 
 ## Contributing
 

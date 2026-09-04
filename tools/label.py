@@ -199,29 +199,23 @@ _SLUG = re.compile(
 _USES = re.compile(r"^\s*-?\s*uses:\s*[\"']?([A-Za-z0-9][\w.-]*/[\w.-]+)", re.MULTILINE)
 _FILE = re.compile(r"\.(py|ya?ml|sh|bash|js|ts|json|md|txt|toml|cfg|ini|lock)$", re.I)
 
-# Words that turn up beside a slash in a description of a workflow. One of
-# these on *either* side means the pair is prose - the old rule needed both,
-# which is why `comment/review` and `github/actions` were rejected.
-_PROSE = {
-    "a", "and", "or", "on", "off", "in", "out", "either", "both", "the",
-    "read", "write", "readonly", "yes", "no", "true", "false", "none",
-    "issue", "issues", "pr", "prs", "pull", "push", "comment", "comments",
-    "review", "reviews", "body", "title", "commit", "commits", "branch",
-    "model", "models", "ai", "llm", "agent", "agents", "prompt", "prompts",
-    "input", "inputs", "output", "outputs", "env", "secret", "secrets",
-    "token", "tokens", "scope", "scopes", "permission", "permissions",
-    "action", "actions", "workflow", "workflows", "job", "jobs", "step", "steps",
-    "user", "users", "account", "accounts", "author", "owner", "member",
-    "config", "configs", "file", "files", "path", "paths", "text", "code",
-    "context", "content", "data", "value", "values", "name", "names",
-    "event", "events", "trigger", "triggers", "run", "runs", "checkout",
-}
+def _looks_like_a_name(token: str) -> bool:
+    """Does this side of the slash look like an identifier rather than a word?
 
+    Enumerating English never kept up: the stoplist passed `read/write` and
+    `comment/review` and still rejected `build/deployment` and
+    `migrations/seeding`, because the next pair of ordinary words is always one
+    rationale away. Shape is the durable signal. Repository and account names
+    carry marks that plain prose does not - a hyphen, a digit, a dot - and two
+    bare lowercase words joined by a slash are prose until something says
+    otherwise.
 
-def _is_prose(token: str) -> bool:
-    """A word, or a hyphenated compound of words, rather than a name."""
-    parts = [part for part in token.replace("_", "-").split("-") if part]
-    return bool(parts) and all(part in _PROSE for part in parts)
+    The cost is that a repository genuinely named `acme/widgets` is not caught
+    here. That is deliberate: naming an unrelated project is not a disclosure,
+    and the one name that must never appear - the source of the workflow being
+    labelled - is refused exactly, by lookup, not by guesswork.
+    """
+    return any(character.isdigit() or character in "-._" for character in token)
 
 
 def action_slugs(text: str) -> set[str]:
@@ -252,9 +246,11 @@ def identifying(rationale: str, allowed: set[str], forbidden: set[str] = frozens
         # which happens when a project runs its own action. Never echoed back.
         if slug in forbidden:
             return "the repository this workflow came from", False
-        if _is_prose(owner) or _is_prose(repo):
-            continue
         if _FILE.search(repo):
+            continue
+        # Neither side carries a name-like mark, so this is two words with a
+        # slash between them: `build/deployment`, not `grafana/auto-triager`.
+        if not _looks_like_a_name(owner) and not _looks_like_a_name(repo):
             continue
         if slug in allowed:
             continue

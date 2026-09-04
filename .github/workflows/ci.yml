@@ -34,6 +34,35 @@ jobs:
       - name: Rule documentation is in sync
         run: python tools/gen_rule_docs.py --check
 
+  action:
+    # The wrapper is the adoption path, so a broken one is a broken release.
+    # Runs against this repository with uploading off, because code scanning
+    # is not the thing under test here - the composite steps are.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Run the action on this repository
+        id: arkexa
+        uses: ./
+        with:
+          upload: 'false'
+          fail-on-findings: 'false'
+
+      - name: The action produced a SARIF report
+        run: |
+          set -e
+          test -f "${{ steps.arkexa.outputs.sarif-file }}"
+          python -c "
+          import json, sys
+          doc = json.load(open('${{ steps.arkexa.outputs.sarif-file }}'))
+          assert doc['version'] == '2.1.0', doc.get('version')
+          assert doc['runs'][0]['tool']['driver']['name'] == 'ARKEXA'
+          print('SARIF valid,', len(doc['runs'][0]['results']), 'result(s)')
+          "
+
   self-scan:
     runs-on: ubuntu-latest
     steps:
