@@ -172,16 +172,24 @@ jobs:
       - uses: alokgorithm/ARKEXA@v0
 ```
 
-Pin it to a commit SHA rather than a tag if you would rather a tag move not
-change what runs — which is advice this tool gives about other actions, so it
-had better take it:
+**`@v0` is a moving tag.** It is force-updated to the newest `v0.x` release,
+so what runs changes underneath you when a release lands. That is convenient
+and it is not immutable.
+
+**If you want immutability, pin the commit SHA** — which is advice this tool
+gives about other people's actions, so it had better take it:
 
 ```yaml
       - uses: alokgorithm/ARKEXA@<sha>  # v0.1.0a1
 ```
 
-The pinned ref decides the scanner version as well as the wrapper, so a pinned
-action is reproducible. Useful inputs:
+A pinned SHA fixes the **scanner** version as well as the wrapper, because the
+Action installs from its own checkout. That cuts both ways: `@v0` means you
+get fixes without doing anything, and also means you get changes you did not
+review. Pick deliberately. Immutable version tags — `v0.1.0a1` and successors
+— are also available if you want a readable pin that still never moves.
+
+Useful inputs:
 
 | input | default | what it does |
 |---|---|---|

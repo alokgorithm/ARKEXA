@@ -132,3 +132,47 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  moving-tag:
+    # The GitHub Action is consumed as `alokgorithm/ARKEXA@v0`, so that tag has
+    # to follow the newest v0.x release. Doing it here rather than by hand is
+    # the point: a moving tag that someone forgets to move is worse than no
+    # moving tag, because it silently pins every consumer to an old scanner.
+    #
+    # Runs only after publish succeeds. A tag that advertises a release which
+    # never reached PyPI would send `pip install` looking for nothing.
+    needs: publish
+    if: startsWith(github.ref_name, 'v0.')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Point v0 at this release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          major="${RELEASE_TAG%%.*}"          # v0.2.0 -> v0
+          repo="${{ github.repository }}"
+          echo "moving $major to $COMMIT ($RELEASE_TAG)"
+
+          # The API rather than a git push, so no credential is persisted to
+          # the runner's disk for a one-line ref update.
+          if gh api "repos/${repo}/git/ref/tags/${major}" >/dev/null 2>&1; then
+            gh api -X PATCH "repos/${repo}/git/refs/tags/${major}" \
+              -f sha="$COMMIT" -F force=true >/dev/null
+            echo "moved $major"
+          else
+            gh api -X POST "repos/${repo}/git/refs" \
+              -f ref="refs/tags/${major}" -f sha="$COMMIT" >/dev/null
+            echo "created $major"
+          fi
+
+          landed=$(gh api "repos/${repo}/git/ref/tags/${major}" --jq '.object.sha')
+          if [ "$landed" != "$COMMIT" ]; then
+            echo "$major points at $landed, expected $COMMIT"
+            exit 1
+          fi
+          echo "$major now tracks $RELEASE_TAG" >> "$GITHUB_STEP_SUMMARY"

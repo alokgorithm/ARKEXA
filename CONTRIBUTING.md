@@ -98,3 +98,36 @@ other people's repositories, and no working injection payloads.
 User-visible changes go in [CHANGELOG.md](CHANGELOG.md) under `Unreleased`, in
 the same pull request that makes them. A change that makes a rule report less
 must be called out there explicitly.
+
+### Tags
+
+Two kinds, and they behave differently on purpose.
+
+**Version tags are immutable.** `v0.1.0a1`, `v0.2.0`, and so on. Each points at
+one commit for good and is what `release.yml` publishes to PyPI from — the tag
+has to match `__version__` in `src/arkexa/__init__.py` or the release fails
+before it builds anything, because a version on PyPI can never be reused.
+
+**`v0` is a moving tag.** It tracks the latest `v0.x` release and is
+force-updated to point at it. That is what makes
+`uses: alokgorithm/ARKEXA@v0` work as the documented three-line adoption path
+without asking people to edit a SHA on every release.
+
+Moving it is automated: the `moving-tag` job in `release.yml` re-points `v0`
+after a `v0.*` tag publishes successfully, using the GitHub API. It runs only
+on success, because a moving tag advertising a release that never reached PyPI
+sends `pip install` looking for something that is not there. Do not move it by
+hand; if you must, it is:
+
+```bash
+git tag -f -a v0 -m "v0 moving tag" <commit> && git push -f origin v0
+```
+
+Note that `v0` selects the **scanner** version as well as the Action wrapper,
+because the Action installs from its own checkout. Anyone on `@v0` therefore
+gets whatever the newest `v0.x` release contains. That is the trade a moving
+tag makes, and the README tells users how to opt out of it.
+
+The release workflow triggers on `v*.*` rather than `v*` so that moving `v0`
+does not look like a release attempt. When `v1` arrives it will need the same
+treatment: a moving `v1`, and version tags that carry a dot.

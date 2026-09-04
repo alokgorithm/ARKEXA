@@ -27,6 +27,13 @@ is worse than one that never ran.
   pinned to commit SHAs, which is advice this tool gives about other actions
   and had better take. The pinned ref decides the scanner version as well as
   the wrapper, so a pinned action is reproducible.
+- **A `v0` moving tag**, force-updated to the newest `v0.x` release by the
+  `moving-tag` job so `uses: alokgorithm/ARKEXA@v0` stays current without
+  anyone remembering to move it. It runs only after a publish succeeds, since
+  a moving tag pointing at a release that never reached PyPI sends
+  `pip install` looking for nothing. `@v0` is mutable by design; the README
+  says so and points anyone wanting immutability at a SHA pin, and
+  CONTRIBUTING documents the scheme.
 - **First measured numbers**, in the README and in `benchmark/`. Prevalence:
   18 of 49 hand-labelled workflows carry an externally reachable path, Wilson
   95% CI 24.7-50.7%. Evaluation: ARKEXA at 67% precision and **11% recall** on
