@@ -3,10 +3,16 @@ name: Release
 # Publishing is triggered by a tag, and a tag is the only thing that triggers
 # it. Nothing here runs on a push to main, so an accidental merge cannot ship a
 # release.
+#
+# `v*.*` and not `v*`, so the moving major-version tag the GitHub Action is
+# consumed by - `v0`, and `v1` after it - does not look like a release. That
+# tag is re-pointed at every release and force-pushed; on `v*` each move fired
+# this workflow, which then failed the version check and left a red run behind
+# for something that was never a release attempt.
 on:
   push:
     tags:
-      - "v*"
+      - "v*.*"
 
 permissions:
   contents: read
