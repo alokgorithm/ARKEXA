@@ -276,10 +276,18 @@ find X of 30"* — not a claim that they are worse tools.
 
 Binding, and not optional. Full text in [../SECURITY.md](../SECURITY.md).
 
-- Private disclosure to affected maintainers before publication, 90 days.
+- Assess impact before choosing a channel; a rule's severity is not an impact
+  assessment.
+- Private disclosure before publication, 90 days, for anything with real
+  impact — code execution, repository writes, exposure of secrets. An
+  advisory finding on an already-mitigated workflow may go through a public
+  issue instead.
 - Aggregate statistics only. No repository, org, or maintainer named.
 - No proof-of-concept payloads published, ever.
-- Read-only. Never trigger, probe, or interact with another project's CI.
+- Read-only. Never probe another project's CI or exercise a workflow to learn
+  something about it. Reporting a finding through an issue tracker is ordinary
+  contact, not testing, even when filing the issue fires the workflow being
+  reported — and nothing is ever concluded from what that run does.
 - Any maintainer may have their workflow removed from the corpus on request.
 
 ## Publication

@@ -224,8 +224,10 @@ Built a scanner that only reports the ones an outsider can actually reach.
 
 - [ ] `benchmark/results.md` has real numbers, or every post avoids
       percentages entirely
-- [ ] any repository found to have a live externally reachable issue has been
-      told privately, 90 days ago, per SECURITY.md
+- [ ] every externally reachable finding has a written impact assessment, and
+      each was routed per SECURITY.md — privately and 90 days ago where the
+      impact is real, a public issue only where it is advisory and already
+      mitigated
 - [ ] no repository is named in any post, screenshot, or reply
 - [ ] the install line in the README works from a clean machine
 - [ ] you have two hours free after posting to answer comments
