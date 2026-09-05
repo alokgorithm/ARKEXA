@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "corpus": "evaluation",
+  "committed": "2026-09-05",
+  "committed_before": "any code for ARK006-ARK011, and before the taint-source engine change",
+  "why_this_file_exists": [
+    "The v0.2 rules are being designed from the classes ARKEXA missed on the",
+    "first corpus. If the queries that collect the next corpus were chosen",
+    "after those rules were written, the corpus would be shaped by the",
+    "detection patterns and any recall figure from it would measure only that",
+    "the rules find what they were pointed at. Committing the queries first,",
+    "with a timestamp, is what makes the eventual number defensible - and it",
+    "cannot be done convincingly after the fact, which is why it is done now."
+  ],
+  "selection_rule": {
+    "allowed": [
+      "an agent name or credential string from src/arkexa/data/agents.yml",
+      "at most one trigger event per query",
+      "path:.github/workflows"
+    ],
+    "forbidden": [
+      "checkout ref expressions (head.sha, head.ref, refs/pull)",
+      "artifact actions (upload-artifact, download-artifact)",
+      "permission scopes (contents: write, pull-requests: write)",
+      "activity types (labeled, assigned)",
+      "any conjunction that matches a rule's structural signature"
+    ],
+    "reasoning": [
+      "Trigger stratification is not new: METHODOLOGY step 3 already required",
+      "it so schedule-only workflows are not over-represented. Naming a",
+      "trigger continues published method. Naming the sink, the scope or the",
+      "ref expression alongside it would be writing the answer key, because",
+      "that conjunction is exactly what ARK009 and ARK011 match on."
+    ]
+  },
+  "enriched": true,
+  "enriched_reason": [
+    "Declared enriched even though collection is query-driven, because the",
+    "trigger balance below was chosen knowing which classes were missed.",
+    "That skew is legitimate for measuring recall and disqualifying for",
+    "prevalence. Over-declaring costs nothing; under-declaring would let a",
+    "prevalence figure be computed from a corpus that cannot support one.",
+    "score.py refuses prevalence on this corpus as a result."
+  ],
+  "exclusions": [
+    "every repository in .calibration/sources.json (85)",
+    "every repository in .benchmark/prevalence/sources-private.json (98)",
+    "at most one workflow per repository, as before"
+  ],
+  "target": {
+    "collect": 80,
+    "draw_for_labelling": 50,
+    "draw_order": "shuffled and published, so stopping partway stays representative"
+  },
+  "queries": [
+    "\"claude-code-action\" \"workflow_run\" path:.github/workflows",
+    "\"claude-code-action\" \"issues\" path:.github/workflows",
+    "\"actions/ai-inference\" \"issue_comment\" path:.github/workflows",
+    "\"actions/ai-inference\" \"workflow_run\" path:.github/workflows",
+    "\"run-gemini-cli\" \"pull_request_target\" path:.github/workflows",
+    "\"run-gemini-cli\" \"workflow_run\" path:.github/workflows",
+    "\"aider\" \"issue_comment\" path:.github/workflows",
+    "\"codex\" \"pull_request_target\" path:.github/workflows",
+    "\"opencode\" \"issue_comment\" path:.github/workflows",
+    "\"cursor-agent\" \"pull_request\" path:.github/workflows",
+    "\"amp\" \"issue_comment\" path:.github/workflows",
+    "\"goose\" \"issues\" path:.github/workflows",
+    "\"openrouter\" \"pull_request_target\" path:.github/workflows",
+    "\"llm\" \"-m\" \"github.event.comment.body\" path:.github/workflows",
+    "\"ANTHROPIC_API_KEY\" \"github.event.pull_request\" path:.github/workflows",
+    "\"OPENAI_API_KEY\" \"github.event.comment\" path:.github/workflows",
+    "\"openhands\" \"github.event\" path:.github/workflows",
+    "\"shell-gpt\" \"github.event\" path:.github/workflows",
+    "\"ollama\" \"github.event.issue\" path:.github/workflows",
+    "\"crush\" \"github.event\" path:.github/workflows",
+    "\"copilot\" \"--prompt\" \"github.event\" path:.github/workflows",
+    "\"continue-action\" \"github.event\" path:.github/workflows",
+    "\"sweep\" \"github.event.issue\" path:.github/workflows",
+    "\"openai-assistant\" \"github.event\" path:.github/workflows"
+  ],
+  "notes": [
+    "24 queries. Fourteen vary the trigger for agents already known to appear",
+    "in real workflows; eight cover agents in the inventory that the first",
+    "collection never queried (openhands, shell-gpt, ollama, crush,",
+    "copilot-cli, continue, sweep, openai-assistant); two are credential",
+    "strings, which catch agents invoked in ways no signature matches.",
+    "A query that returns nothing is recorded as returning nothing rather",
+    "than replaced, because silently swapping a query for a more productive",
+    "one after seeing the results is the same contamination in slower form."
+  ]
+}

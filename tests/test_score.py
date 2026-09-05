@@ -318,6 +318,72 @@ class NormalisedDuplicateTest(unittest.TestCase):
         self.assertNotEqual(same, different)
 
 
+class CollectionQueriesTest(unittest.TestCase):
+    """The queries were committed before the rules they will be used to score.
+
+    That ordering is the only thing that makes a recall figure from the next
+    corpus mean anything, and it is unverifiable after the fact - so the rule
+    the queries were chosen under is checked here rather than trusted to a
+    paragraph. A query naming a checkout ref or a permission scope alongside a
+    trigger would be searching for the exact conjunction ARK009 and ARK011
+    match on, which is writing the answer key and calling it a measurement.
+    """
+
+    FORBIDDEN = [
+        "head.sha", "head.ref", "refs/pull",          # ARK009's checkout shape
+        "upload-artifact", "download-artifact",        # ARK011's artifact shape
+        "contents:", "pull-requests:", "issues: write",  # any permission scope
+        "labeled", "assigned",                         # ARK010's activity types
+    ]
+    TRIGGERS = [
+        "issue_comment", "issues", "pull_request_target", "pull_request",
+        "workflow_run", "schedule", "workflow_dispatch",
+    ]
+
+    @classmethod
+    def setUpClass(cls):
+        path = ROOT / "benchmark" / "evaluation" / "queries.json"
+        cls.data = json.loads(path.read_text(encoding="utf-8"))
+
+    def test_the_queries_exist_and_are_dated(self):
+        self.assertTrue(self.data["queries"])
+        self.assertRegex(self.data["committed"], r"^\d{4}-\d{2}-\d{2}$")
+        self.assertIn("before", self.data["committed_before"])
+
+    def test_no_query_names_a_rule_signature(self):
+        for query in self.data["queries"]:
+            for term in self.FORBIDDEN:
+                with self.subTest(query=query, term=term):
+                    self.assertNotIn(
+                        term, query,
+                        f"{query!r} names {term!r}, which is part of what the new "
+                        "rules match on - that makes recall circular",
+                    )
+
+    def test_no_query_names_more_than_one_trigger(self):
+        """One trigger is stratification. Two is a structural pattern."""
+        for query in self.data["queries"]:
+            named = [t for t in self.TRIGGERS if f'"{t}"' in query]
+            # `pull_request` is a substring of `pull_request_target`; the quoted
+            # form separates them, so this counts distinct quoted events.
+            with self.subTest(query=query):
+                self.assertLessEqual(len(named), 1, f"{query!r} names {named}")
+
+    def test_every_query_is_scoped_to_workflow_files(self):
+        for query in self.data["queries"]:
+            self.assertIn("path:.github/workflows", query)
+
+    def test_the_corpus_is_declared_enriched(self):
+        """Trigger balance was chosen knowing the missed classes, so it is."""
+        self.assertEqual(self.data["corpus"], score.EVALUATION)
+        self.assertTrue(self.data["enriched"])
+
+    def test_both_earlier_corpora_are_excluded(self):
+        joined = " ".join(self.data["exclusions"]).lower()
+        self.assertIn("calibration", joined)
+        self.assertIn("prevalence", joined)
+
+
 class ShippedCorporaTest(unittest.TestCase):
     """Whatever is committed must declare what it is allowed to claim."""
 
